@@ -7,6 +7,60 @@ and this project follows [Semantic Versioning](https://semver.org/) once it reac
 
 ---
 
+## [0.4.0] — 2026-04-17
+
+### Added
+- **WhatsApp order flow.** Checkout no longer simulates a fake order —
+  it composes a formatted message (items, totals, address, phone) and
+  opens WhatsApp's contact picker so customers can send the order to
+  any shopkeeper, operator, or friend.
+- **Share sheet fallback.** "Share another way" button uses the native
+  share sheet for SMS, Telegram, email, etc.
+- **Voice notes.** Customers can record a voice note at checkout. Audio
+  is captured via MediaRecorder, with live transcript using Web Speech
+  API (Kannada first, English fallback). Transcript is included in the
+  WhatsApp message; audio can be downloaded to forward separately.
+- **Admin-only Shop mode.** Tapping the "Shop" role prompts for a PIN.
+- **Editable shops.** Add, edit, and delete shops — name, emoji,
+  category, distance/time/rating, tags, delivery fee.
+- **Editable items per shop.** Add, edit, delete items with image URL
+  (live preview) and in-stock toggle. Falls back to emoji if URL fails.
+- **Persistent storage.** Shop/item edits save to localStorage and
+  survive refresh. Reset option available in admin.
+
+### Changed
+- Removed the old simulated "Place order" flow.
+- Shop Dashboard "Items" tab reworked into a per-shop admin panel.
+
+### Security note
+- PIN gate is a convenience lock, not real authentication. The PIN
+  lives in client code. For production multi-shop deployment, replace
+  with Firebase Auth or Supabase Auth + per-shop accounts.
+
+---
+
+## [0.3.2] — 2026-04-17
+
+### Fixed
+- Hardened viewport settings to prevent iPhone Safari from rendering
+  the app at desktop zoom level.
+- Forced cache version bump so installed users get the mobile fixes.
+
+---
+
+## [0.3.1] — 2026-04-17
+
+### Fixed
+- **Mobile layout polish.** Tightened typography, spacing, and tap targets
+  for small phones (320px–380px wide).
+- Inputs no longer trigger iOS zoom on focus (16px minimum font size).
+- Respects iPhone notch and Android navigation-bar safe areas.
+- Prevented horizontal scroll on narrow screens.
+- Uses `100dvh` (dynamic viewport height) on modern browsers to avoid
+  the mobile Safari address-bar jumping issue.
+
+---
+
 ## [0.3.0] — 2026-04-17
 
 ### Added

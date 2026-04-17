@@ -663,3 +663,192 @@ input, select, textarea {
 @supports (height: 100dvh) {
   body { min-height: 100dvh; }
 }
+
+/* ====================================================================
+   ADMIN (shop + item editor) and VOICE RECORDER styling
+   ==================================================================== */
+
+.admin-hint {
+  font-size: 12px;
+  color: var(--ink-soft);
+  margin-bottom: 10px;
+  padding: 0 2px;
+}
+
+.admin-row {
+  background: white;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  transition: transform .1s;
+}
+.admin-row:active { transform: scale(0.995); }
+
+.admin-emoji {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  background: var(--paper-2);
+  display: grid;
+  place-items: center;
+  font-size: 22px;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.admin-info { flex: 1; min-width: 0; }
+.admin-name {
+  font-weight: 600;
+  font-size: 15px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.admin-meta { font-size: 12px; color: var(--ink-soft); }
+
+.admin-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.admin-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: var(--paper-2);
+  color: var(--ink);
+  display: grid;
+  place-items: center;
+  font-size: 14px;
+  font-weight: 500;
+}
+.admin-btn:active { background: var(--rule); }
+.admin-btn.danger { color: var(--accent-2); }
+.admin-btn.danger:active { background: #fee2e2; }
+
+/* Two-column form fields */
+.field.two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.field.two-col .lbl {
+  font-size: 13px;
+  color: var(--ink-soft);
+  display: block;
+  margin-bottom: 6px;
+  font-weight: 500;
+}
+.field.two-col input,
+.field.two-col select {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  background: var(--paper);
+  outline: none;
+}
+
+/* Image preview inside item editor */
+.image-preview {
+  margin-top: 8px;
+  min-height: 80px;
+  padding: 14px;
+  border: 1px dashed var(--rule);
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  background: var(--paper-2);
+}
+.image-preview img {
+  display: block;
+}
+
+/* Stock checkbox row */
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 0;
+  font-size: 15px;
+  color: var(--ink);
+  cursor: pointer;
+}
+.checkbox-row input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--accent);
+}
+
+/* ---- Voice recorder ---- */
+.voice-label {
+  font-weight: 600;
+  font-size: 15px;
+  margin-bottom: 4px;
+}
+.voice-sub {
+  font-size: 13px;
+  color: var(--ink-soft);
+  margin-bottom: 10px;
+  line-height: 1.4;
+}
+.voice-sub strong { color: var(--ink); }
+
+.voice-btn {
+  width: 100%;
+  padding: 13px;
+  border-radius: 12px;
+  font-weight: 600;
+  font-size: 15px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.voice-btn.record {
+  background: var(--accent-soft);
+  color: var(--accent-2);
+  border: 1px solid var(--accent);
+}
+.voice-btn.record:active { background: var(--accent); color: white; }
+.voice-btn.stop {
+  background: var(--accent-2);
+  color: white;
+}
+.voice-btn.secondary {
+  background: var(--paper-2);
+  color: var(--ink);
+  flex: 1;
+}
+
+.voice-rec-on {
+  color: var(--accent-2);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.voice-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent-2);
+  animation: pulse 1s infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+#voiceBox audio {
+  border-radius: 8px;
+  outline: none;
+}
+
+/* Modal needs to be scrollable on small screens */
+.modal {
+  max-height: 85vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}

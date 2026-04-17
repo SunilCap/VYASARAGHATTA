@@ -112,7 +112,7 @@
   <section id="view-checkout" class="view">
     <button class="back" onclick="goBackFromCheckout()">← Back</button>
     <h2 style="font-size: 24px; margin-bottom: 6px;">Your basket</h2>
-    <p style="color: var(--ink-soft); font-size: 14px; margin: 0 0 14px;">Items from multiple shops are combined into one order.</p>
+    <p style="color: var(--ink-soft); font-size: 14px; margin: 0 0 14px;">Review your order, add a voice note if you like, then share it on WhatsApp.</p>
     <div id="cartSummary"></div>
     <div class="panel">
       <div class="field"><span class="lbl">Deliver to</span>
@@ -125,7 +125,16 @@
         <select><option>Cash on delivery</option><option>UPI on delivery</option></select>
       </div>
     </div>
-    <button class="primary" id="placeBtn" onclick="placeOrder()">Place order</button>
+
+    <!-- Voice recorder -->
+    <div class="panel" id="voiceBox">
+      <div class="voice-label">Add a voice note (optional)</div>
+      <div class="voice-sub">Tell the shop exactly what you need. In any language.</div>
+      <button class="voice-btn record" onclick="startVoiceRecording()">🎙️ Start recording</button>
+    </div>
+
+    <button class="primary" id="placeBtn" onclick="sendViaWhatsApp()">📱 Send order on WhatsApp</button>
+    <button class="secondary" style="margin-top: 8px;" onclick="sendViaShareSheet()">Share another way</button>
   </section>
 
   <section id="view-track" class="view">
@@ -216,24 +225,88 @@
   <button class="go" onclick="show('view-checkout')">Checkout →</button>
 </div>
 
-<div class="modal-backdrop" id="addModal">
+<!-- Shop editor modal (add or edit a shop's info) -->
+<div class="modal-backdrop" id="shopEditor">
   <div class="modal">
-    <h3>Add new item</h3>
-    <div class="emoji-pick" id="emojiPick">
-      <button data-e="🍞" class="selected">🍞</button>
-      <button data-e="🥐">🥐</button>
-      <button data-e="🎂">🎂</button>
-      <button data-e="🧁">🧁</button>
-      <button data-e="🍪">🍪</button>
-      <button data-e="🥖">🥖</button>
-      <button data-e="🍰">🍰</button>
-      <button data-e="🥧">🥧</button>
+    <h3 id="shopEditorTitle">Add new shop</h3>
+    <div class="field"><span class="lbl">Shop name</span>
+      <input id="seName" type="text" placeholder="e.g. Gowda Kirana Store" />
     </div>
-    <div class="field"><span class="lbl">Item name</span><input id="newName" type="text" placeholder="e.g. Whole wheat bread" /></div>
-    <div class="field"><span class="lbl">Price (₹)</span><input id="newPrice" type="number" placeholder="45" /></div>
-    <div class="field"><span class="lbl">Short description</span><input id="newDesc" type="text" placeholder="Fresh daily" /></div>
-    <button class="primary" onclick="saveNewItem()">Save item</button>
-    <button class="secondary" style="margin-top: 8px;" onclick="closeAddModal()">Cancel</button>
+    <div class="field two-col">
+      <div><span class="lbl">Emoji icon</span>
+        <input id="seEmoji" type="text" placeholder="🛒" maxlength="4" />
+      </div>
+      <div><span class="lbl">Category</span>
+        <select id="seCategory">
+          <option value="food">Food</option>
+          <option value="grocery">Grocery</option>
+          <option value="pharmacy">Pharmacy</option>
+          <option value="bakery">Bakery</option>
+          <option value="stationery">Stationery</option>
+          <option value="dairy">Dairy</option>
+          <option value="meat">Meat & Fish</option>
+        </select>
+      </div>
+    </div>
+    <div class="field"><span class="lbl">Distance</span>
+      <input id="seDistance" type="text" placeholder="e.g. 1.2 km" />
+    </div>
+    <div class="field"><span class="lbl">Delivery time</span>
+      <input id="seTime" type="text" placeholder="e.g. 25–30 min" />
+    </div>
+    <div class="field"><span class="lbl">Rating</span>
+      <input id="seRating" type="text" placeholder="e.g. 4.7 ★" />
+    </div>
+    <div class="field"><span class="lbl">Tags (comma-separated)</span>
+      <input id="seTags" type="text" placeholder="e.g. Open till 10 PM, Daily needs" />
+    </div>
+    <div class="field"><span class="lbl">Delivery fee (₹)</span>
+      <input id="seFee" type="number" placeholder="20" />
+    </div>
+    <button class="primary" onclick="saveShopEditor()">Save shop</button>
+    <button class="secondary" style="margin-top: 8px;" onclick="closeShopEditor()">Cancel</button>
+  </div>
+</div>
+
+<!-- Items admin (list of items in one shop) -->
+<div class="modal-backdrop" id="itemsAdmin">
+  <div class="modal">
+    <div style="display:flex; align-items:center; justify-content: space-between; margin-bottom: 10px;">
+      <h3 id="itemsAdminTitle" style="margin:0;">Items</h3>
+      <button class="admin-btn" onclick="closeItemsAdmin()" title="Close">✕</button>
+    </div>
+    <div id="itemsAdminList"></div>
+  </div>
+</div>
+
+<!-- Item editor (add/edit individual item) -->
+<div class="modal-backdrop" id="itemEditor">
+  <div class="modal">
+    <h3 id="itemEditorTitle">Add item</h3>
+    <div class="field"><span class="lbl">Item name</span>
+      <input id="ieName" type="text" placeholder="e.g. Whole wheat bread" />
+    </div>
+    <div class="field two-col">
+      <div><span class="lbl">Emoji (fallback)</span>
+        <input id="ieEmoji" type="text" placeholder="🍞" maxlength="4" />
+      </div>
+      <div><span class="lbl">Price (₹)</span>
+        <input id="iePrice" type="number" placeholder="45" />
+      </div>
+    </div>
+    <div class="field"><span class="lbl">Description</span>
+      <input id="ieDesc" type="text" placeholder="e.g. Baked fresh at 5 AM" />
+    </div>
+    <div class="field"><span class="lbl">Image URL (optional)</span>
+      <input id="ieImage" type="url" placeholder="https://..." oninput="updateImagePreview()" />
+      <div id="iePreview" class="image-preview"><span style="color: var(--ink-soft); font-size: 12px;">No image — emoji will be used</span></div>
+    </div>
+    <label class="checkbox-row">
+      <input id="ieStock" type="checkbox" checked />
+      <span>In stock</span>
+    </label>
+    <button class="primary" onclick="saveItemEditor()">Save item</button>
+    <button class="secondary" style="margin-top: 8px;" onclick="closeItemEditor()">Cancel</button>
   </div>
 </div>
 

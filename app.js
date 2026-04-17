@@ -130,11 +130,26 @@ function updateNavActive(viewId) {
 
 function goBackFromCheckout() { show(lastView || 'view-browse'); }
 
+// Admin PIN for Shop mode. Change this in one place to update.
+const ADMIN_PIN = '9876';
+let shopUnlocked = false;
+
 document.querySelectorAll('.role-switch button').forEach(btn => {
   btn.addEventListener('click', () => {
+    const role = btn.dataset.role;
+
+    // Gate Shop mode behind PIN until unlocked for this session
+    if (role === 'shop' && !shopUnlocked) {
+      const entered = prompt('Enter admin PIN to access Shop mode:');
+      if (entered !== ADMIN_PIN) {
+        if (entered !== null) alert('Incorrect PIN.');
+        return; // Stay on current role
+      }
+      shopUnlocked = true;
+    }
+
     document.querySelectorAll('.role-switch button').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
-    const role = btn.dataset.role;
     ['navCustomer','navShop','navRider'].forEach(n => document.getElementById(n).style.display = 'none');
     document.getElementById('fabAdd').style.display = 'none';
     if (role === 'customer') {
@@ -217,12 +232,15 @@ function renderItems() {
   list.innerHTML = currentShop.items.map(it => {
     const qty = cart[it.id]?.qty || 0;
     const outClass = it.stock ? '' : 'out';
+    const imageHTML = it.image
+      ? `<img src="${it.image}" alt="" onerror="this.parentElement.innerHTML='${it.emoji}';" style="width:100%; height:100%; object-fit: cover; border-radius: 12px;">`
+      : it.emoji;
     return `
       <div class="item ${outClass}">
-        <div class="item-emoji">${it.emoji}</div>
+        <div class="item-emoji">${imageHTML}</div>
         <div class="item-body">
           <div class="item-name">${it.name} ${!it.stock ? '<span class="out-tag">· sold out</span>' : ''}</div>
-          <div class="item-desc">${it.desc}</div>
+          <div class="item-desc">${it.desc || ''}</div>
           <div class="item-price">₹${it.price}</div>
         </div>
         <div>
@@ -675,7 +693,7 @@ function dashTab(tab) {
   document.querySelectorAll('#navShop button').forEach((b, i) => b.classList.toggle('active', (tab === 'orders' && i === 0) || (tab === 'menu' && i === 1)));
   document.getElementById('tabOrders').style.display = tab === 'orders' ? '' : 'none';
   document.getElementById('tabMenu').style.display   = tab === 'menu'   ? '' : 'none';
-  document.getElementById('fabAdd').style.display    = tab === 'menu'   ? 'grid' : 'none';
+  document.getElementById('fabAdd').style.display    = 'none';
   if (tab === 'orders') renderOrders();
   if (tab === 'menu')   renderMenu();
 }
@@ -711,18 +729,13 @@ function orderAction(id, action) {
 }
 
 function renderMenu() {
-  const list = document.getElementById('menuList');
-  list.innerHTML = dashMenu.map(m => `
-    <div class="inv-item">
-      <div class="item-emoji">${m.emoji}</div>
-      <div class="n"><div class="n-name">${m.name}</div><div class="n-meta">₹${m.price} · ${m.sold} sold today</div></div>
-      <button class="toggle ${m.stock ? 'on' : ''}" onclick="toggleStock('${m.id}')"></button>
-    </div>`).join('');
+  // In admin mode, the Menu tab shows all shops — tap one to edit its items.
+  renderShopAdmin();
 }
 
 function toggleStock(id) {
-  const m = dashMenu.find(x => x.id === id);
-  if (m) { m.stock = !m.stock; renderMenu(); }
+  // Kept for backward compat; now delegates to item admin
+  console.log('toggleStock called', id);
 }
 
 function openAddModal() {
@@ -751,15 +764,25 @@ function saveNewItem() {
   renderMenu();
 }
 
-renderShops();
-
 /* =====================================================================
    VERSION & UPDATE MANAGEMENT
    ===================================================================== */
 
 // Single source of truth — bump this on every release (also bump CACHE_VERSION in sw.js)
-const APP_VERSION = '0.3.2';
+const APP_VERSION = '0.4.0';
 const RELEASE_NOTES = [
+  {
+    version: '0.4.0',
+    date: '17 Apr 2026',
+    notes: [
+      'WhatsApp order flow — basket sends as pre-filled message to any contact.',
+      'Voice notes on orders with auto-transcript (Kannada → English fallback).',
+      'Admin-only Shop mode, unlocked with PIN.',
+      'Editable shops & items — add, edit, delete with image URL and stock toggle.',
+      'Shop edits persist on the device (localStorage). Reset option available.',
+      '"Share another way" option uses native share sheet for SMS, Telegram, etc.',
+    ],
+  },
   {
     version: '0.3.2',
     date: '17 Apr 2026',
@@ -929,4 +952,490 @@ function installApp() {
 function dismissInstall() {
   const banner = document.getElementById('installBanner');
   if (banner) banner.style.display = 'none';
+}
+
+/* =====================================================================
+   PERSISTENT STORAGE (localStorage-based)
+   Shop/item edits survive refresh on the same device.
+   ===================================================================== */
+
+const STORAGE_KEY = 'vyasaraghatta.shops.v1';
+
+function saveShops() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(shops));
+  } catch (e) {
+    console.warn('Could not save shops:', e);
+  }
+}
+
+function loadShops() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return;
+    const saved = JSON.parse(raw);
+    if (Array.isArray(saved) && saved.length) {
+      // Replace the in-memory shops with saved version
+      shops.length = 0;
+      saved.forEach(s => shops.push(s));
+    }
+  } catch (e) {
+    console.warn('Could not load shops:', e);
+  }
+}
+
+function resetShopsToDefault() {
+  if (!confirm('Reset all shop data to the default demo shops? This cannot be undone.')) return;
+  localStorage.removeItem(STORAGE_KEY);
+  location.reload();
+}
+
+// Load saved shops on startup
+loadShops();
+renderShops();
+
+/* =====================================================================
+   ADMIN: SHOP MANAGEMENT (add / edit / delete shops)
+   ===================================================================== */
+
+let editingShopId = null;
+
+function renderShopAdmin() {
+  const list = document.getElementById('shopAdminList') || document.getElementById('menuList');
+  if (!list) return;
+  list.innerHTML = `
+    <button class="primary" onclick="openShopEditor()" style="margin-bottom: 10px;">+ Add new shop</button>
+    <button class="secondary" onclick="resetShopsToDefault()" style="margin-bottom: 14px; font-size: 13px;">Reset to demo shops</button>
+    <div class="admin-hint">Tap a shop to manage its items.</div>
+    ${shops.map(s => `
+      <div class="admin-row" onclick="openShopItems('${s.id}')">
+        <div class="admin-emoji">${s.emoji}</div>
+        <div class="admin-info">
+          <div class="admin-name">${s.name}</div>
+          <div class="admin-meta">${catLabel(s.category)} · ${s.items.length} items</div>
+        </div>
+        <div class="admin-actions" onclick="event.stopPropagation();">
+          <button class="admin-btn" onclick="editShop('${s.id}')" title="Edit shop info">✏️</button>
+          <button class="admin-btn danger" onclick="deleteShop('${s.id}')" title="Delete shop">×</button>
+        </div>
+      </div>
+    `).join('')}
+  `;
+}
+
+function openShopEditor(shopId) {
+  editingShopId = shopId || null;
+  const shop = shopId ? shops.find(s => s.id === shopId) : null;
+  document.getElementById('shopEditorTitle').textContent = shop ? 'Edit shop' : 'Add new shop';
+  document.getElementById('seName').value = shop ? shop.name : '';
+  document.getElementById('seEmoji').value = shop ? shop.emoji : '🏪';
+  document.getElementById('seCategory').value = shop ? shop.category : 'food';
+  document.getElementById('seDistance').value = shop ? (shop.meta[0] || '') : '1 km';
+  document.getElementById('seTime').value = shop ? (shop.meta[1] || '') : '20–30 min';
+  document.getElementById('seRating').value = shop ? (shop.meta[2] || '') : '4.5 ★';
+  document.getElementById('seTags').value = shop ? shop.tags.join(', ') : '';
+  document.getElementById('seFee').value = shop ? shop.fee : 20;
+  document.getElementById('shopEditor').classList.add('show');
+}
+
+function editShop(id) { openShopEditor(id); }
+
+function closeShopEditor() {
+  document.getElementById('shopEditor').classList.remove('show');
+  editingShopId = null;
+}
+
+function saveShopEditor() {
+  const name = document.getElementById('seName').value.trim();
+  if (!name) { alert('Please enter a shop name.'); return; }
+  const data = {
+    name,
+    emoji: document.getElementById('seEmoji').value.trim() || '🏪',
+    category: document.getElementById('seCategory').value,
+    meta: [
+      document.getElementById('seDistance').value.trim() || '1 km',
+      document.getElementById('seTime').value.trim() || '25–30 min',
+      document.getElementById('seRating').value.trim() || '4.5 ★',
+    ],
+    tags: document.getElementById('seTags').value.split(',').map(t => t.trim()).filter(Boolean),
+    fee: parseInt(document.getElementById('seFee').value, 10) || 20,
+    live: true,
+  };
+  if (editingShopId) {
+    const shop = shops.find(s => s.id === editingShopId);
+    Object.assign(shop, data);
+  } else {
+    shops.push({
+      id: 's_' + Date.now(),
+      ...data,
+      items: [],
+    });
+  }
+  saveShops();
+  closeShopEditor();
+  renderShopAdmin();
+  renderShops();
+}
+
+function deleteShop(id) {
+  const shop = shops.find(s => s.id === id);
+  if (!shop) return;
+  if (!confirm(`Delete "${shop.name}"? This will remove all its items too.`)) return;
+  const idx = shops.findIndex(s => s.id === id);
+  shops.splice(idx, 1);
+  saveShops();
+  renderShopAdmin();
+  renderShops();
+}
+
+/* =====================================================================
+   ADMIN: ITEM MANAGEMENT (per shop, with image URL)
+   ===================================================================== */
+
+let editingShopItemsId = null;
+let editingItemId = null;
+
+function openShopItems(shopId) {
+  editingShopItemsId = shopId;
+  const shop = shops.find(s => s.id === shopId);
+  document.getElementById('itemsAdminTitle').textContent = `Items: ${shop.name}`;
+  renderItemsAdmin();
+  document.getElementById('itemsAdmin').classList.add('show');
+}
+
+function closeItemsAdmin() {
+  document.getElementById('itemsAdmin').classList.remove('show');
+  editingShopItemsId = null;
+}
+
+function renderItemsAdmin() {
+  const shop = shops.find(s => s.id === editingShopItemsId);
+  if (!shop) return;
+  const list = document.getElementById('itemsAdminList');
+  list.innerHTML = `
+    <button class="primary" onclick="openItemEditor()" style="margin-bottom: 14px;">+ Add new item</button>
+    ${shop.items.length === 0 ? '<div class="empty"><div class="em">📦</div>No items yet. Add your first one.</div>' : ''}
+    ${shop.items.map(it => `
+      <div class="admin-row">
+        <div class="admin-emoji">
+          ${it.image ? `<img src="${it.image}" alt="" style="width:100%; height:100%; object-fit: cover; border-radius: 10px;" onerror="this.style.display='none'; this.parentElement.innerHTML='${it.emoji}';">` : it.emoji}
+        </div>
+        <div class="admin-info">
+          <div class="admin-name">${it.name} ${!it.stock ? '<span style="color: var(--accent-2); font-size:11px; font-weight:600;">· SOLD OUT</span>' : ''}</div>
+          <div class="admin-meta">₹${it.price} · ${it.desc || ''}</div>
+        </div>
+        <div class="admin-actions">
+          <button class="admin-btn" onclick="editItem('${it.id}')">Edit</button>
+          <button class="admin-btn danger" onclick="deleteItem('${it.id}')">×</button>
+        </div>
+      </div>
+    `).join('')}
+  `;
+}
+
+function openItemEditor(itemId) {
+  editingItemId = itemId || null;
+  const shop = shops.find(s => s.id === editingShopItemsId);
+  const item = itemId ? shop.items.find(i => i.id === itemId) : null;
+  document.getElementById('itemEditorTitle').textContent = item ? 'Edit item' : 'Add item';
+  document.getElementById('ieName').value = item ? item.name : '';
+  document.getElementById('ieEmoji').value = item ? item.emoji : '🛒';
+  document.getElementById('iePrice').value = item ? item.price : '';
+  document.getElementById('ieDesc').value = item ? (item.desc || '') : '';
+  document.getElementById('ieImage').value = item ? (item.image || '') : '';
+  document.getElementById('ieStock').checked = item ? item.stock !== false : true;
+  updateImagePreview();
+  document.getElementById('itemEditor').classList.add('show');
+}
+
+function editItem(id) { openItemEditor(id); }
+
+function closeItemEditor() {
+  document.getElementById('itemEditor').classList.remove('show');
+  editingItemId = null;
+}
+
+function updateImagePreview() {
+  const url = document.getElementById('ieImage').value.trim();
+  const preview = document.getElementById('iePreview');
+  if (!preview) return;
+  if (!url) {
+    preview.innerHTML = '<span style="color: var(--ink-soft); font-size: 12px;">No image — emoji will be used</span>';
+    return;
+  }
+  preview.innerHTML = `<img src="${url}" alt="preview" style="max-width: 100%; max-height: 120px; border-radius: 10px; object-fit: cover;" onerror="this.parentElement.innerHTML='<span style=\\'color: var(--accent-2); font-size: 12px;\\'>⚠️ Image failed to load</span>';">`;
+}
+
+function saveItemEditor() {
+  const shop = shops.find(s => s.id === editingShopItemsId);
+  if (!shop) return;
+  const name = document.getElementById('ieName').value.trim();
+  const price = parseFloat(document.getElementById('iePrice').value);
+  if (!name || isNaN(price)) { alert('Please enter name and price.'); return; }
+  const data = {
+    name,
+    emoji: document.getElementById('ieEmoji').value.trim() || '🛒',
+    price,
+    desc: document.getElementById('ieDesc').value.trim(),
+    image: document.getElementById('ieImage').value.trim(),
+    stock: document.getElementById('ieStock').checked,
+  };
+  if (editingItemId) {
+    const item = shop.items.find(i => i.id === editingItemId);
+    Object.assign(item, data);
+  } else {
+    shop.items.push({ id: 'it_' + Date.now(), ...data });
+  }
+  saveShops();
+  closeItemEditor();
+  renderItemsAdmin();
+  renderShops();
+}
+
+function deleteItem(id) {
+  const shop = shops.find(s => s.id === editingShopItemsId);
+  if (!shop) return;
+  const item = shop.items.find(i => i.id === id);
+  if (!confirm(`Delete "${item.name}"?`)) return;
+  const idx = shop.items.findIndex(i => i.id === id);
+  shop.items.splice(idx, 1);
+  saveShops();
+  renderItemsAdmin();
+  renderShops();
+}
+
+/* =====================================================================
+   VOICE RECORDER (MediaRecorder API) + speech-to-text (Web Speech API)
+   ===================================================================== */
+
+let mediaRecorder = null;
+let audioChunks = [];
+let audioBlob = null;
+let audioUrl = null;
+let recognition = null;
+let voiceTranscript = '';
+let recordStartTime = 0;
+let recordTimer = null;
+
+function isVoiceSupported() {
+  return typeof navigator !== 'undefined' &&
+         navigator.mediaDevices &&
+         typeof MediaRecorder !== 'undefined';
+}
+
+async function startVoiceRecording() {
+  if (!isVoiceSupported()) {
+    alert('Voice recording is not supported on this browser. Please use Chrome or Safari.');
+    return;
+  }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    audioChunks = [];
+    voiceTranscript = '';
+    mediaRecorder = new MediaRecorder(stream);
+
+    mediaRecorder.addEventListener('dataavailable', e => {
+      if (e.data.size > 0) audioChunks.push(e.data);
+    });
+
+    mediaRecorder.addEventListener('stop', () => {
+      audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+      if (audioUrl) URL.revokeObjectURL(audioUrl);
+      audioUrl = URL.createObjectURL(audioBlob);
+      stream.getTracks().forEach(t => t.stop());
+      clearInterval(recordTimer);
+      renderVoiceUI('recorded');
+    });
+
+    mediaRecorder.start();
+    recordStartTime = Date.now();
+    recordTimer = setInterval(() => {
+      const elapsed = Math.floor((Date.now() - recordStartTime) / 1000);
+      const el = document.getElementById('voiceTimer');
+      if (el) el.textContent = formatTime(elapsed);
+    }, 200);
+    renderVoiceUI('recording');
+
+    // Also start speech recognition for transcript (Kannada + English fallback)
+    startTranscription();
+  } catch (err) {
+    alert('Could not access the microphone. Please allow mic access and try again.');
+    console.error(err);
+  }
+}
+
+function stopVoiceRecording() {
+  if (mediaRecorder && mediaRecorder.state === 'recording') {
+    mediaRecorder.stop();
+  }
+  if (recognition) {
+    try { recognition.stop(); } catch (e) {}
+  }
+}
+
+function clearVoiceRecording() {
+  if (audioUrl) { URL.revokeObjectURL(audioUrl); audioUrl = null; }
+  audioBlob = null;
+  audioChunks = [];
+  voiceTranscript = '';
+  renderVoiceUI('idle');
+}
+
+function startTranscription() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) return; // Silent — just won't have transcript
+  recognition = new SR();
+  recognition.continuous = true;
+  recognition.interimResults = true;
+  // Try Kannada first; fall back to English if browser doesn't support it
+  recognition.lang = 'kn-IN';
+  let finalText = '';
+  recognition.onresult = (e) => {
+    let interim = '';
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const t = e.results[i][0].transcript;
+      if (e.results[i].isFinal) finalText += t + ' ';
+      else interim += t;
+    }
+    voiceTranscript = (finalText + interim).trim();
+    const el = document.getElementById('voiceTranscript');
+    if (el) el.textContent = voiceTranscript || '(listening…)';
+  };
+  recognition.onerror = () => {
+    // If Kannada fails, retry with English once
+    if (recognition.lang === 'kn-IN') {
+      recognition.lang = 'en-IN';
+      try { recognition.start(); } catch (e) {}
+    }
+  };
+  try { recognition.start(); } catch (e) {}
+}
+
+function formatTime(sec) {
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return `${m}:${s < 10 ? '0' : ''}${s}`;
+}
+
+function renderVoiceUI(state) {
+  const box = document.getElementById('voiceBox');
+  if (!box) return;
+  if (state === 'idle') {
+    box.innerHTML = `
+      <div class="voice-label">Add a voice note (optional)</div>
+      <div class="voice-sub">Tell the shop exactly what you need. In any language.</div>
+      <button class="voice-btn record" onclick="startVoiceRecording()">🎙️ Start recording</button>
+    `;
+  } else if (state === 'recording') {
+    box.innerHTML = `
+      <div class="voice-label voice-rec-on">
+        <span class="voice-dot"></span> Recording… <span id="voiceTimer">0:00</span>
+      </div>
+      <div class="voice-sub" id="voiceTranscript">(listening…)</div>
+      <button class="voice-btn stop" onclick="stopVoiceRecording()">⏹ Stop recording</button>
+    `;
+  } else if (state === 'recorded') {
+    const duration = Math.floor((Date.now() - recordStartTime) / 1000);
+    box.innerHTML = `
+      <div class="voice-label">Voice note ready (${formatTime(duration)})</div>
+      ${voiceTranscript ? `<div class="voice-sub"><strong>Transcript:</strong> ${voiceTranscript}</div>` : '<div class="voice-sub" style="color: var(--ink-soft);">No transcript captured — audio only.</div>'}
+      <audio controls src="${audioUrl}" style="width: 100%; margin-top: 8px;"></audio>
+      <div style="display: flex; gap: 8px; margin-top: 8px;">
+        <button class="voice-btn secondary" onclick="clearVoiceRecording()">Re-record</button>
+      </div>
+    `;
+  }
+}
+
+/* =====================================================================
+   WHATSAPP SHARE — replaces fake "Place order"
+   ===================================================================== */
+
+function buildOrderMessage() {
+  const groups = cartGroupedByShop();
+  const shopIds = Object.keys(groups);
+  const { subtotal, delivery, total } = cartStats();
+  const addr = document.getElementById('addr').value.trim() || '(not provided)';
+  const phone = document.getElementById('phone').value.trim() || '(not provided)';
+
+  let msg = `🧺 *New Vyasaraghatta Order*\n\n`;
+  shopIds.forEach(sid => {
+    const shop = shops.find(s => s.id === sid);
+    const lines = groups[sid];
+    msg += `*${shop.name}* ${shop.emoji}\n`;
+    lines.forEach(l => {
+      msg += `  • ${l.qty}× ${l.item.name} — ₹${l.qty * l.item.price}\n`;
+    });
+    msg += `\n`;
+  });
+  msg += `_Subtotal: ₹${subtotal}_\n`;
+  msg += `_Delivery: ₹${delivery}_\n`;
+  msg += `*Total: ₹${total}*\n\n`;
+  msg += `📍 Deliver to: ${addr}\n`;
+  msg += `📞 Contact: ${phone}\n`;
+  if (voiceTranscript) {
+    msg += `\n🎙️ *Voice note transcript:*\n"${voiceTranscript}"\n`;
+  }
+  if (audioBlob) {
+    msg += `\n_(Customer has a voice note — will send separately.)_\n`;
+  }
+  msg += `\n— Sent via Vyasaraghatta`;
+  return msg;
+}
+
+function sendViaWhatsApp() {
+  if (Object.keys(cart).length === 0) { alert('Your basket is empty.'); return; }
+  const msg = buildOrderMessage();
+  const url = `https://wa.me/?text=${encodeURIComponent(msg)}`;
+  // Open WhatsApp's contact picker
+  window.open(url, '_blank');
+  afterOrderSent();
+}
+
+async function sendViaShareSheet() {
+  if (Object.keys(cart).length === 0) { alert('Your basket is empty.'); return; }
+  const msg = buildOrderMessage();
+  if (navigator.share) {
+    try {
+      const shareData = { title: 'Vyasaraghatta order', text: msg };
+      // Try to attach audio file if the browser supports it
+      if (audioBlob && navigator.canShare) {
+        const file = new File([audioBlob], 'voice-note.webm', { type: 'audio/webm' });
+        if (navigator.canShare({ files: [file] })) {
+          shareData.files = [file];
+        }
+      }
+      await navigator.share(shareData);
+      afterOrderSent();
+    } catch (err) {
+      if (err.name !== 'AbortError') console.warn('Share failed:', err);
+    }
+  } else {
+    // Fallback: copy to clipboard
+    try {
+      await navigator.clipboard.writeText(msg);
+      alert('Order copied to clipboard. Paste it into any chat app.');
+      afterOrderSent();
+    } catch (e) {
+      alert('Sharing not supported on this browser. Please use WhatsApp option.');
+    }
+  }
+}
+
+function afterOrderSent() {
+  // Offer to download audio if present (so user can forward it manually)
+  if (audioBlob) {
+    const confirmed = confirm('Order text has been sent. Would you like to save your voice note to forward separately?');
+    if (confirmed) {
+      const a = document.createElement('a');
+      a.href = audioUrl;
+      a.download = `voice-order-${Date.now()}.webm`;
+      a.click();
+    }
+  }
+  cart = {};
+  clearVoiceRecording();
+  updateCartBar();
+  show('view-browse');
+  setTimeout(() => alert('Order shared! The shop or your contact will confirm.'), 300);
 }
