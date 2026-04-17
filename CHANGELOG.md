@@ -7,6 +7,33 @@ and this project follows [Semantic Versioning](https://semver.org/) once it reac
 
 ---
 
+## [0.4.2] — 2026-04-18
+
+### Fixed
+- **CRITICAL: All new buttons (WhatsApp send, voice recording, shop editing)
+  were completely non-functional.** A leftover top-level event listener
+  from the removed "Add item" modal (`emojiPick`) was referencing a DOM
+  element that no longer exists. When the script ran, `getElementById`
+  returned `null`, `.addEventListener` threw a `TypeError`, and
+  **all subsequent script execution halted** — meaning none of the new
+  feature functions were ever defined on `window`.
+- Removed the orphaned code. All buttons now work as designed.
+
+### Note for users on older versions
+- When you open the updated app, the "Update available" banner will appear.
+  Tap **Update now** to refresh to 0.4.2.
+
+---
+
+## [0.4.1] — 2026-04-17
+
+### Changed
+- Replaced browser `prompt()` PIN entry with a proper in-app modal that
+  works inside installed PWAs on iOS.
+- Refined WhatsApp send flow with confirmation prompt.
+
+---
+
 ## [0.4.0] — 2026-04-17
 
 ### Added

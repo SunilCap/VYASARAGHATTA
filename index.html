@@ -225,6 +225,20 @@
   <button class="go" onclick="show('view-checkout')">Checkout →</button>
 </div>
 
+<!-- PIN modal for unlocking Shop admin mode -->
+<div class="modal-backdrop" id="pinModal">
+  <div class="modal" style="max-width: 360px;">
+    <h3>Enter Admin PIN</h3>
+    <p style="font-size: 14px; color: var(--ink-soft); margin: 0 0 14px;">Shop admin mode is protected by a PIN.</p>
+    <div class="field">
+      <input id="pinInput" type="tel" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="••••" style="text-align: center; font-size: 22px; letter-spacing: 8px;" autocomplete="off" />
+      <div id="pinError" style="display:none; color: var(--accent-2); font-size: 13px; margin-top: 8px; text-align: center;">Incorrect PIN. Try again.</div>
+    </div>
+    <button class="primary" onclick="submitPin()">Unlock</button>
+    <button class="secondary" style="margin-top: 8px;" onclick="cancelPin()">Cancel</button>
+  </div>
+</div>
+
 <!-- Shop editor modal (add or edit a shop's info) -->
 <div class="modal-backdrop" id="shopEditor">
   <div class="modal">

@@ -133,6 +133,62 @@ function goBackFromCheckout() { show(lastView || 'view-browse'); }
 // Admin PIN for Shop mode. Change this in one place to update.
 const ADMIN_PIN = '9876';
 let shopUnlocked = false;
+let pendingShopActivation = false;
+
+function promptForPin() {
+  // Show the PIN modal — works inside installed PWAs unlike prompt()
+  const modal = document.getElementById('pinModal');
+  if (modal) {
+    document.getElementById('pinInput').value = '';
+    document.getElementById('pinError').style.display = 'none';
+    modal.classList.add('show');
+    setTimeout(() => document.getElementById('pinInput').focus(), 100);
+  } else {
+    // Fallback if modal markup is missing
+    const entered = prompt('Enter admin PIN to access Shop mode:');
+    if (entered === ADMIN_PIN) {
+      shopUnlocked = true;
+      activateShopMode();
+    } else if (entered !== null) {
+      alert('Incorrect PIN.');
+    }
+  }
+}
+
+function submitPin() {
+  const entered = document.getElementById('pinInput').value;
+  if (entered === ADMIN_PIN) {
+    shopUnlocked = true;
+    document.getElementById('pinModal').classList.remove('show');
+    activateShopMode();
+  } else {
+    document.getElementById('pinError').style.display = 'block';
+    document.getElementById('pinInput').value = '';
+    document.getElementById('pinInput').focus();
+  }
+}
+
+function cancelPin() {
+  document.getElementById('pinModal').classList.remove('show');
+  pendingShopActivation = false;
+  // Restore previous active role
+  const customerBtn = document.querySelector('.role-switch button[data-role="customer"]');
+  if (customerBtn) {
+    document.querySelectorAll('.role-switch button').forEach(b => b.classList.remove('active'));
+    customerBtn.classList.add('active');
+  }
+}
+
+function activateShopMode() {
+  document.querySelectorAll('.role-switch button').forEach(b => b.classList.remove('active'));
+  const shopBtn = document.querySelector('.role-switch button[data-role="shop"]');
+  if (shopBtn) shopBtn.classList.add('active');
+  ['navCustomer','navShop','navRider'].forEach(n => document.getElementById(n).style.display = 'none');
+  document.getElementById('fabAdd').style.display = 'none';
+  document.getElementById('navShop').style.display = 'flex';
+  cart = {}; updateCartBar();
+  show('view-dash'); dashTab(activeTab);
+}
 
 document.querySelectorAll('.role-switch button').forEach(btn => {
   btn.addEventListener('click', () => {
@@ -140,12 +196,8 @@ document.querySelectorAll('.role-switch button').forEach(btn => {
 
     // Gate Shop mode behind PIN until unlocked for this session
     if (role === 'shop' && !shopUnlocked) {
-      const entered = prompt('Enter admin PIN to access Shop mode:');
-      if (entered !== ADMIN_PIN) {
-        if (entered !== null) alert('Incorrect PIN.');
-        return; // Stay on current role
-      }
-      shopUnlocked = true;
+      promptForPin();
+      return;
     }
 
     document.querySelectorAll('.role-switch button').forEach(b => b.classList.remove('active'));
@@ -156,9 +208,7 @@ document.querySelectorAll('.role-switch button').forEach(btn => {
       document.getElementById('navCustomer').style.display = 'flex';
       show('view-browse');
     } else if (role === 'shop') {
-      document.getElementById('navShop').style.display = 'flex';
-      cart = {}; updateCartBar();
-      show('view-dash'); dashTab(activeTab);
+      activateShopMode();
     } else if (role === 'rider') {
       document.getElementById('navRider').style.display = 'flex';
       cart = {}; updateCartBar();
@@ -738,39 +788,36 @@ function toggleStock(id) {
   console.log('toggleStock called', id);
 }
 
-function openAddModal() {
-  document.getElementById('addModal').classList.add('show');
-  document.getElementById('newName').value = '';
-  document.getElementById('newPrice').value = '';
-  document.getElementById('newDesc').value = '';
-  selectedEmoji = '🍞';
-  document.querySelectorAll('#emojiPick button').forEach((b,i) => b.classList.toggle('selected', i===0));
-}
-function closeAddModal() { document.getElementById('addModal').classList.remove('show'); }
-document.getElementById('emojiPick').addEventListener('click', e => {
-  if (e.target.tagName === 'BUTTON') {
-    document.querySelectorAll('#emojiPick button').forEach(b => b.classList.remove('selected'));
-    e.target.classList.add('selected');
-    selectedEmoji = e.target.dataset.e;
-  }
-});
-function saveNewItem() {
-  const name  = document.getElementById('newName').value.trim();
-  const price = parseInt(document.getElementById('newPrice').value, 10);
-  const desc  = document.getElementById('newDesc').value.trim();
-  if (!name || !price) { alert('Please add at least a name and price.'); return; }
-  dashMenu.unshift({ id: 'new' + Date.now(), emoji: selectedEmoji, name, price, stock: true, sold: 0 });
-  closeAddModal();
-  renderMenu();
-}
+/* NOTE: The old "Add item" modal (addModal / emojiPick) was replaced
+   in v0.4.0 by the per-shop item editor (itemEditor + openItemEditor).
+   The old handler block is deliberately removed — it was breaking script
+   execution because the DOM elements no longer exist. */
 
 /* =====================================================================
    VERSION & UPDATE MANAGEMENT
    ===================================================================== */
 
 // Single source of truth — bump this on every release (also bump CACHE_VERSION in sw.js)
-const APP_VERSION = '0.4.0';
+const APP_VERSION = '0.4.2';
 const RELEASE_NOTES = [
+  {
+    version: '0.4.2',
+    date: '18 Apr 2026',
+    notes: [
+      'CRITICAL FIX: "Send order on WhatsApp", voice recording, and shop edit buttons were completely non-functional due to a script-level error. All buttons now work.',
+      'Removed leftover dead code from an old UI modal that was crashing script execution at page load.',
+    ],
+  },
+  {
+    version: '0.4.1',
+    date: '17 Apr 2026',
+    notes: [
+      'Fixed: WhatsApp send now reliably opens on iOS, Android, desktop.',
+      'Fixed: voice recording now works on iPhone Safari (uses audio/mp4).',
+      'Fixed: PIN entry now uses an in-app modal (works inside installed PWA).',
+      'Better error messages when mic permission is denied.',
+    ],
+  },
   {
     version: '0.4.0',
     date: '17 Apr 2026',
@@ -993,6 +1040,14 @@ function resetShopsToDefault() {
 // Load saved shops on startup
 loadShops();
 renderShops();
+
+// PIN input: submit on Enter key
+const pinInputEl = document.getElementById('pinInput');
+if (pinInputEl) {
+  pinInputEl.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') submitPin();
+  });
+}
 
 /* =====================================================================
    ADMIN: SHOP MANAGEMENT (add / edit / delete shops)
@@ -1224,27 +1279,66 @@ function isVoiceSupported() {
 }
 
 async function startVoiceRecording() {
-  if (!isVoiceSupported()) {
-    alert('Voice recording is not supported on this browser. Please use Chrome or Safari.');
+  // Detailed feature checks with helpful errors
+  if (!window.isSecureContext) {
+    alert('Voice recording requires HTTPS. Open the app via the GitHub Pages URL (not localhost or http://).');
     return;
   }
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    alert('Voice recording is not supported on this browser.\n\nTry: Chrome on Android, or Safari on iPhone.');
+    return;
+  }
+  if (typeof MediaRecorder === 'undefined') {
+    alert('Audio recording API not available on this browser.\n\nTry Chrome on Android or update Safari.');
+    return;
+  }
+
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     audioChunks = [];
     voiceTranscript = '';
-    mediaRecorder = new MediaRecorder(stream);
+
+    // Pick a MIME type the browser actually supports.
+    // iOS Safari supports audio/mp4; Chrome/Android supports audio/webm.
+    const candidates = [
+      'audio/webm;codecs=opus',
+      'audio/webm',
+      'audio/mp4',
+      'audio/mpeg',
+      'audio/ogg;codecs=opus',
+      ''  // let the browser pick
+    ];
+    let chosenMime = '';
+    for (const m of candidates) {
+      if (!m || (MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(m))) {
+        chosenMime = m;
+        break;
+      }
+    }
+    mediaRecorder = chosenMime
+      ? new MediaRecorder(stream, { mimeType: chosenMime })
+      : new MediaRecorder(stream);
 
     mediaRecorder.addEventListener('dataavailable', e => {
       if (e.data.size > 0) audioChunks.push(e.data);
     });
 
     mediaRecorder.addEventListener('stop', () => {
-      audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+      const useMime = chosenMime || 'audio/webm';
+      audioBlob = new Blob(audioChunks, { type: useMime });
       if (audioUrl) URL.revokeObjectURL(audioUrl);
       audioUrl = URL.createObjectURL(audioBlob);
       stream.getTracks().forEach(t => t.stop());
       clearInterval(recordTimer);
       renderVoiceUI('recorded');
+    });
+
+    mediaRecorder.addEventListener('error', (e) => {
+      console.error('MediaRecorder error:', e);
+      alert('Recording failed. Try again.');
+      stream.getTracks().forEach(t => t.stop());
+      clearInterval(recordTimer);
+      renderVoiceUI('idle');
     });
 
     mediaRecorder.start();
@@ -1256,11 +1350,18 @@ async function startVoiceRecording() {
     }, 200);
     renderVoiceUI('recording');
 
-    // Also start speech recognition for transcript (Kannada + English fallback)
+    // Speech recognition (transcript) — only if browser supports it
     startTranscription();
   } catch (err) {
-    alert('Could not access the microphone. Please allow mic access and try again.');
-    console.error(err);
+    console.error('getUserMedia error:', err);
+    if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+      alert('Microphone permission denied.\n\nGo to your phone Settings → Safari/Chrome → allow microphone for this site.');
+    } else if (err.name === 'NotFoundError') {
+      alert('No microphone found on this device.');
+    } else {
+      alert('Could not start recording: ' + err.message);
+    }
+    renderVoiceUI('idle');
   }
 }
 
@@ -1386,10 +1487,30 @@ function buildOrderMessage() {
 function sendViaWhatsApp() {
   if (Object.keys(cart).length === 0) { alert('Your basket is empty.'); return; }
   const msg = buildOrderMessage();
-  const url = `https://wa.me/?text=${encodeURIComponent(msg)}`;
-  // Open WhatsApp's contact picker
-  window.open(url, '_blank');
-  afterOrderSent();
+  const encoded = encodeURIComponent(msg);
+
+  // wa.me works on all platforms when WhatsApp is installed.
+  // On iOS Safari, window.open is sometimes blocked from non-direct user
+  // gestures, so we use location.href as the primary path.
+  const url = `https://wa.me/?text=${encoded}`;
+
+  // Use a temporary anchor and click() — this is the most reliable
+  // way to trigger an external app from a button across iOS, Android, desktop.
+  const a = document.createElement('a');
+  a.href = url;
+  a.target = '_blank';
+  a.rel = 'noopener';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+
+  // Don't auto-clear the cart — wait for user to confirm they sent it.
+  // (Previously cart was cleared immediately, which was confusing if WA didn't open.)
+  setTimeout(() => {
+    if (confirm('Did the WhatsApp message send successfully?')) {
+      afterOrderSent();
+    }
+  }, 1500);
 }
 
 async function sendViaShareSheet() {
