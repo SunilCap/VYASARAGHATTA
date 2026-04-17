@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<meta name="theme-color" content="#166534" />
+<meta name="description" content="Vyasaraghatta — hyperlocal commerce for villages. Order from nearby shops, delivered by your neighbours." />
+
+<!-- iOS PWA support -->
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
+<meta name="apple-mobile-web-app-title" content="Vyasaraghatta" />
+<link rel="apple-touch-icon" href="./icons/icon-192.png" />
+
+<title>Vyasaraghatta — Hyperlocal, Delivered by Neighbours</title>
+
+<!--
+  ============================================================
+  CONFIDENTIAL PROTOTYPE — VYASARAGHATTA
+  © 2026 Sunil Malleshaiah. All rights reserved.
+  Concept, name, design, and content are the confidential and
+  proprietary information of Sunil Malleshaiah. Not for
+  distribution or reproduction without written permission.
+  ============================================================
+-->
+
+<link rel="manifest" href="./manifest.webmanifest" />
+<link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png" />
+<link rel="icon" type="image/png" sizes="512x512" href="./icons/icon-512.png" />
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+
+<link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+
+<!-- Install banner (shown when browser allows install) -->
+<!-- Install banner (shown when browser allows install) -->
+<div id="installBanner" class="pwa-banner" style="display:none;">
+  <div class="pwa-banner-text">Install Vyasaraghatta on your phone?</div>
+  <div class="pwa-banner-actions">
+    <button class="pwa-btn-ghost" onclick="dismissInstall()">Later</button>
+    <button class="pwa-btn-primary" onclick="installApp()">Install</button>
+  </div>
+</div>
+
+<!-- Update banner (shown when a new service worker is waiting) -->
+<div id="updateBanner" class="pwa-banner pwa-banner-update" style="display:none;">
+  <div class="pwa-banner-text">
+    <strong>Update available</strong>
+    <span class="pwa-banner-sub">A new version of Vyasaraghatta is ready.</span>
+  </div>
+  <div class="pwa-banner-actions">
+    <button class="pwa-btn-ghost" onclick="dismissUpdate()">Later</button>
+    <button class="pwa-btn-primary" onclick="applyUpdate()">Update now</button>
+  </div>
+</div>
+
+
+<header class="topbar">
+  <div class="brand">
+    <div class="brand-mark">V</div>
+    <div class="brand-name">Vyasaraghatta</div>
+  </div>
+  <div class="role-switch" role="tablist">
+    <button class="active" data-role="customer">Customer</button>
+    <button data-role="shop">Shop</button>
+    <button data-role="rider">Rider</button>
+  </div>
+</header>
+
+<main>
+
+  <section id="view-browse" class="view active">
+    <div class="hero">
+      <div class="hero-kicker">Your village · Everything nearby</div>
+      <h1>Order local.<br/>Delivered by neighbours.</h1>
+      <p>Food, groceries, medicines, stationery — from shops in and around Vyasaraghatta.</p>
+    </div>
+    <div class="search">
+      <span aria-hidden="true">🔎</span>
+      <input id="searchInput" type="text" placeholder="Search shops or items…" />
+    </div>
+    <div class="cat-grid" id="catGrid">
+      <button class="cat-tile on" data-cat="all"><span class="em">🏘️</span>All</button>
+      <button class="cat-tile" data-cat="food"><span class="em">🍱</span>Food</button>
+      <button class="cat-tile" data-cat="grocery"><span class="em">🛒</span>Grocery</button>
+      <button class="cat-tile" data-cat="pharmacy"><span class="em">💊</span>Pharmacy</button>
+      <button class="cat-tile" data-cat="bakery"><span class="em">🥖</span>Bakery</button>
+      <button class="cat-tile" data-cat="stationery"><span class="em">✏️</span>Stationery</button>
+      <button class="cat-tile" data-cat="dairy"><span class="em">🥛</span>Dairy</button>
+      <button class="cat-tile" data-cat="meat"><span class="em">🍗</span>Meat & Fish</button>
+    </div>
+    <div class="section-title">Open near you</div>
+    <div id="shopList"></div>
+  </section>
+
+  <section id="view-shop" class="view">
+    <button class="back" onclick="show('view-browse')">← Back</button>
+    <div class="shop-header">
+      <h2 id="shopName"></h2>
+      <div class="shop-meta" id="shopMeta"></div>
+    </div>
+    <div class="section-title">Items</div>
+    <div id="itemList"></div>
+  </section>
+
+  <section id="view-checkout" class="view">
+    <button class="back" onclick="goBackFromCheckout()">← Back</button>
+    <h2 style="font-size: 24px; margin-bottom: 6px;">Your basket</h2>
+    <p style="color: var(--ink-soft); font-size: 14px; margin: 0 0 14px;">Items from multiple shops are combined into one order.</p>
+    <div id="cartSummary"></div>
+    <div class="panel">
+      <div class="field"><span class="lbl">Deliver to</span>
+        <input id="addr" type="text" placeholder="House no., street, landmark" value="Near Anjaneya temple, 2nd cross" />
+      </div>
+      <div class="field"><span class="lbl">Phone number</span>
+        <input id="phone" type="tel" placeholder="10-digit mobile" value="98xxxxxx21" />
+      </div>
+      <div class="field" style="margin-bottom: 0;"><span class="lbl">Payment</span>
+        <select><option>Cash on delivery</option><option>UPI on delivery</option></select>
+      </div>
+    </div>
+    <button class="primary" id="placeBtn" onclick="placeOrder()">Place order</button>
+  </section>
+
+  <section id="view-track" class="view">
+    <div class="track-hero">
+      <div class="hero-kicker" id="trackKicker">Order placed</div>
+      <h2 id="trackTitle">Finding a rider nearby…</h2>
+      <p id="trackSub">We're notifying the closest rider first.</p>
+    </div>
+
+    <div id="trackSearchBox" class="panel search-pulse">
+      <div class="ring">🏍️</div>
+      <div class="ttl" id="searchTitle">Looking for your rider</div>
+      <div class="sub" id="searchSub">Asking the nearest rider…</div>
+    </div>
+
+    <div class="panel" id="trackRiderBox" style="display: none;">
+      <div style="font-family: 'Fraunces', serif; font-weight: 700; font-size: 15px; margin-bottom: 10px; color: var(--ink-soft); text-transform: uppercase; letter-spacing: 0.06em;">Your delivery partner</div>
+      <div class="rider-card">
+        <div class="rider-ava" id="rAva">R</div>
+        <div class="rider-info">
+          <div class="n" id="rName">—</div>
+          <div class="sm" id="rMeta">—</div>
+        </div>
+        <a href="#" class="rider-call" onclick="alert('Calling rider…'); return false;">📞</a>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="track-steps" id="trackSteps"></div>
+    </div>
+
+    <div class="panel">
+      <div class="row"><span>Order ID</span><strong id="trackId">—</strong></div>
+      <div class="row"><span>Shops</span><strong id="trackShops">—</strong></div>
+      <div class="row"><span>Total</span><strong id="trackTotal">—</strong></div>
+    </div>
+
+    <button class="secondary" onclick="resetToBrowse()" id="trackDoneBtn" style="display: none;">Order something else</button>
+  </section>
+
+  <section id="view-dash" class="view">
+    <div class="hero" style="padding-bottom: 10px;">
+      <div class="hero-kicker">Shanti Stores · Open</div>
+      <h1 style="font-size: 26px;">Today's counter</h1>
+    </div>
+    <div class="stats">
+      <div class="stat"><div class="num" id="statOrders">7</div><div class="lbl">Orders</div></div>
+      <div class="stat"><div class="num">₹<span id="statRevenue">1,240</span></div><div class="lbl">Revenue</div></div>
+      <div class="stat"><div class="num" id="statPending">2</div><div class="lbl">Pending</div></div>
+    </div>
+    <div class="dash-tabs">
+      <button class="active" data-tab="orders">Orders</button>
+      <button data-tab="menu">Items</button>
+    </div>
+    <div id="tabOrders"><div id="orderList"></div></div>
+    <div id="tabMenu" style="display: none;"><div id="menuList"></div></div>
+    <button class="fab" id="fabAdd" style="display:none;" onclick="openAddModal()">+</button>
+  </section>
+
+  <section id="view-rider" class="view">
+    <div class="rider-header">
+      <div class="rider-avatar-lg">R</div>
+      <div class="info">
+        <div class="name">Ravi Kumar</div>
+        <div class="vil">From Vyasaraghatta · 4.8 ★</div>
+      </div>
+      <button class="online-toggle on" id="onlineToggle" onclick="toggleOnline()">
+        <span class="dot-s"></span><span id="onlineLabel">Online</span>
+      </button>
+    </div>
+
+    <div class="rider-stats">
+      <div class="stat"><div class="num" id="rStatDel">6</div><div class="lbl">Today</div></div>
+      <div class="stat"><div class="num">₹<span id="rStatEarn">420</span></div><div class="lbl">Earnings</div></div>
+      <div class="stat"><div class="num" id="rStatAcc">92%</div><div class="lbl">Accept rate</div></div>
+    </div>
+
+    <div class="section-title" id="rSectionTitle">Incoming orders</div>
+    <div id="riderContent"></div>
+  </section>
+</main>
+
+<div class="cart-bar" id="cartBar">
+  <div>
+    <div class="count"><span id="cartCount">0</span> items · <span id="cartShopCount">0</span> shops</div>
+    <div class="total">₹<span id="cartTotal">0</span></div>
+  </div>
+  <button class="go" onclick="show('view-checkout')">Checkout →</button>
+</div>
+
+<div class="modal-backdrop" id="addModal">
+  <div class="modal">
+    <h3>Add new item</h3>
+    <div class="emoji-pick" id="emojiPick">
+      <button data-e="🍞" class="selected">🍞</button>
+      <button data-e="🥐">🥐</button>
+      <button data-e="🎂">🎂</button>
+      <button data-e="🧁">🧁</button>
+      <button data-e="🍪">🍪</button>
+      <button data-e="🥖">🥖</button>
+      <button data-e="🍰">🍰</button>
+      <button data-e="🥧">🥧</button>
+    </div>
+    <div class="field"><span class="lbl">Item name</span><input id="newName" type="text" placeholder="e.g. Whole wheat bread" /></div>
+    <div class="field"><span class="lbl">Price (₹)</span><input id="newPrice" type="number" placeholder="45" /></div>
+    <div class="field"><span class="lbl">Short description</span><input id="newDesc" type="text" placeholder="Fresh daily" /></div>
+    <button class="primary" onclick="saveNewItem()">Save item</button>
+    <button class="secondary" style="margin-top: 8px;" onclick="closeAddModal()">Cancel</button>
+  </div>
+</div>
+
+<nav class="bottomnav" id="navCustomer">
+  <button class="active" onclick="show('view-browse')"><span class="ic">🏠</span>Home</button>
+  <button onclick="show('view-checkout')"><span class="ic">🧺</span>Basket</button>
+  <button onclick="alert('Order history — coming soon in full build.')"><span class="ic">📋</span>Orders</button>
+</nav>
+<nav class="bottomnav" id="navShop" style="display: none;">
+  <button class="active" onclick="dashTab('orders')"><span class="ic">🔔</span>Orders</button>
+  <button onclick="dashTab('menu')"><span class="ic">📦</span>Items</button>
+  <button onclick="alert('Earnings report — coming soon.')"><span class="ic">📊</span>Earnings</button>
+</nav>
+<nav class="bottomnav" id="navRider" style="display: none;">
+  <button class="active"><span class="ic">🏍️</span>Orders</button>
+  <button onclick="alert('Earnings — coming soon.')"><span class="ic">💰</span>Earnings</button>
+  <button onclick="alert('Profile — coming soon.')"><span class="ic">👤</span>Profile</button>
+</nav>
+
+<div class="legal">
+  <strong>Vyasaraghatta</strong> — Confidential Prototype<br/>
+  © 2026 <strong>Sunil Malleshaiah</strong>. All rights reserved.<br/>
+  Concept, name &amp; design proprietary. Not for distribution.<br/>
+  <button class="version-btn" onclick="openReleaseNotes()" data-version>v0.0.0</button>
+</div>
+
+<!-- Release notes modal -->
+<div class="modal-backdrop" id="releaseModal">
+  <div class="modal">
+    <h3>What's new</h3>
+    <div id="releaseBody"></div>
+    <button class="primary" onclick="closeReleaseNotes()" style="margin-top: 10px;">Close</button>
+  </div>
+</div>
+
+<script src="./app.js"></script>
+</body>
+</html>
