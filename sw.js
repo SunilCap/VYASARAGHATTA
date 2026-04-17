@@ -5,7 +5,7 @@
    Bump APP_VERSION below on every release.
    ===================================================================== */
 
-const APP_VERSION = '0.3.0';
+const APP_VERSION = '0.3.2';
 const CACHE_VERSION = `vyasaraghatta-${APP_VERSION}`;
 
 const CORE_ASSETS = [

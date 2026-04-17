@@ -525,3 +525,141 @@
   line-height: 1.55;
 }
 .rn-list li { margin-bottom: 4px; }
+
+/* ====================================================================
+   MOBILE OPTIMIZATIONS
+   Tuned for phones 320px–480px wide (small Android to iPhone Pro Max)
+   ==================================================================== */
+
+/* Fix iOS 100vh viewport bug */
+@supports (-webkit-touch-callout: none) {
+  body { min-height: -webkit-fill-available; }
+}
+
+/* Prevent horizontal scroll from any overflowing element */
+html, body {
+  overflow-x: hidden;
+  max-width: 100%;
+}
+
+/* Respect iPhone notch / safe areas */
+.topbar {
+  padding-top: calc(14px + env(safe-area-inset-top));
+  padding-left: calc(18px + env(safe-area-inset-left));
+  padding-right: calc(18px + env(safe-area-inset-right));
+}
+main {
+  padding-left: max(18px, env(safe-area-inset-left));
+  padding-right: max(18px, env(safe-area-inset-right));
+}
+
+/* ---- Small phones (≤ 380px wide: iPhone SE, small Android) ---- */
+@media (max-width: 380px) {
+  html, body { font-size: 15px; }
+  main { padding: 16px 14px; }
+
+  .topbar { padding: 12px 14px; gap: 8px; }
+  .brand-name { font-size: 17px; }
+  .brand-mark { width: 30px; height: 30px; font-size: 15px; }
+  .role-switch button { padding: 5px 9px; font-size: 11px; }
+
+  .hero { padding: 4px 0 14px; }
+  .hero h1 { font-size: 24px; line-height: 1.15; }
+  .hero-kicker { font-size: 10px; }
+  .hero p { font-size: 13px; }
+
+  /* Category tiles — switch from 4 to 4 smaller */
+  .cat-grid { gap: 7px; }
+  .cat-tile { padding: 9px 2px; font-size: 10px; }
+  .cat-tile .em { font-size: 22px; }
+
+  .shop-card { padding: 13px; }
+  .shop-name { font-size: 17px; }
+  .shop-meta { font-size: 13px; }
+
+  .item { padding: 12px; gap: 10px; }
+  .item-emoji { width: 48px; height: 48px; font-size: 24px; }
+  .item-name { font-size: 15px; }
+  .item-desc { font-size: 12px; }
+  .item-price { font-size: 15px; }
+  .add-btn { padding: 7px 14px; font-size: 13px; }
+  .qty button { width: 28px; height: 28px; font-size: 16px; }
+
+  .search { padding: 10px 14px; }
+  .search input { font-size: 15px; }
+
+  /* Stats on shop dashboard */
+  .stat { padding: 12px 8px; }
+  .stat .num { font-size: 20px; }
+  .stat .lbl { font-size: 10px; }
+
+  /* Bottom nav a bit tighter */
+  .bottomnav button { padding: 6px 10px; font-size: 10px; }
+  .bottomnav button .ic { font-size: 20px; }
+
+  /* Cart bar doesn't overflow */
+  .cart-bar { padding: 12px 14px; bottom: 72px; }
+  .cart-bar .total { font-size: 18px; }
+  .cart-bar .go { padding: 8px 12px; font-size: 13px; }
+
+  /* PWA banners */
+  .pwa-banner { padding: 10px 12px; bottom: 80px; }
+  .pwa-banner-text { font-size: 12px; }
+  .pwa-btn-primary { padding: 7px 11px; font-size: 12px; }
+  .pwa-btn-ghost { font-size: 12px; padding: 5px 8px; }
+}
+
+/* ---- Very small phones (≤ 340px: Galaxy Fold closed, very old) ---- */
+@media (max-width: 340px) {
+  .hero h1 { font-size: 21px; }
+  .brand-name { font-size: 15px; }
+  .role-switch button { padding: 4px 7px; font-size: 10px; }
+
+  /* Stack role switch tighter */
+  .topbar { flex-wrap: wrap; gap: 6px; }
+
+  /* Categories go 3 columns to give more breathing room */
+  .cat-grid { grid-template-columns: repeat(3, 1fr); }
+
+  /* Stats keep 3 but smaller */
+  .stat .num { font-size: 18px; }
+}
+
+/* ---- Tablet / desktop: keep the app phone-sized, centered ---- */
+@media (min-width: 640px) {
+  main { max-width: 520px; }
+  .topbar { max-width: 520px; margin: 0 auto; }
+  .bottomnav {
+    max-width: 520px;
+    left: 50%;
+    transform: translateX(-50%);
+    border-left: 1px solid var(--rule);
+    border-right: 1px solid var(--rule);
+  }
+}
+
+/* ---- Landscape on short phones: tighten vertical padding ---- */
+@media (max-height: 500px) and (orientation: landscape) {
+  .hero { padding: 2px 0 10px; }
+  .hero h1 { font-size: 20px; }
+  body { padding-bottom: 70px; }
+}
+
+/* ---- Touch target minimum (WCAG) ---- */
+button, .chip, .cat-tile, .bottomnav button, .add-btn, .qty button {
+  min-height: 36px;
+}
+.bottomnav button { min-height: 44px; }
+
+/* ---- Prevent text inflation on iOS rotate ---- */
+html { -webkit-text-size-adjust: 100%; }
+
+/* ---- Make all input fonts at least 16px so iOS doesn't zoom on focus ---- */
+input, select, textarea {
+  font-size: 16px !important;
+}
+
+/* ---- Dynamic viewport height support (modern phones) ---- */
+@supports (height: 100dvh) {
+  body { min-height: 100dvh; }
+}

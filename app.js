@@ -758,8 +758,27 @@ renderShops();
    ===================================================================== */
 
 // Single source of truth — bump this on every release (also bump CACHE_VERSION in sw.js)
-const APP_VERSION = '0.3.0';
+const APP_VERSION = '0.3.2';
 const RELEASE_NOTES = [
+  {
+    version: '0.3.2',
+    date: '17 Apr 2026',
+    notes: [
+      'Fixed iPhone Safari showing the app at desktop zoom level.',
+      'Hardened viewport settings to prevent any unwanted scaling.',
+      'Forced cache refresh so all devices get the mobile layout fixes.',
+    ],
+  },
+  {
+    version: '0.3.1',
+    date: '17 Apr 2026',
+    notes: [
+      'Mobile-first polish: fixed layout on small phones (320px–380px).',
+      'Inputs no longer trigger unwanted zoom on iOS when focused.',
+      'Respects iPhone notch and safe areas.',
+      'Tighter typography and tap targets for one-handed use.',
+    ],
+  },
   {
     version: '0.3.0',
     date: '17 Apr 2026',
