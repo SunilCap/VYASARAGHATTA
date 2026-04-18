@@ -119,7 +119,11 @@ function show(id) {
   window.scrollTo({ top: 0, behavior: 'instant' });
   updateNavActive(id);
   updateCartBar();
-  if (id === 'view-checkout') renderCartSummary();
+  if (id === 'view-checkout') {
+    renderCartSummary();
+    // Re-apply the current fulfilment mode so the UI reflects it (warning, address visibility)
+    if (typeof setFulfilmentMode === 'function') setFulfilmentMode(fulfilmentMode || 'delivery');
+  }
 }
 
 function updateNavActive(viewId) {
@@ -368,10 +372,13 @@ function cartStats() {
   Object.values(cart).forEach(c => { count += c.qty; subtotal += c.qty * c.item.price; });
   const shopCount = Object.keys(groups).length;
   let delivery = 0;
-  Object.keys(groups).forEach((sid, idx) => {
-    const shop = shops.find(s => s.id === sid);
-    delivery += idx === 0 ? shop.fee : Math.round(shop.fee / 2);
-  });
+  // No delivery fee for pickup mode
+  if (typeof fulfilmentMode === 'undefined' || fulfilmentMode !== 'pickup') {
+    Object.keys(groups).forEach((sid, idx) => {
+      const shop = shops.find(s => s.id === sid);
+      delivery += idx === 0 ? shop.fee : Math.round(shop.fee / 2);
+    });
+  }
   return { count, subtotal, delivery, total: subtotal + delivery, shopCount };
 }
 
@@ -831,8 +838,18 @@ function toggleStock(id) {
    ===================================================================== */
 
 // Single source of truth — bump this on every release (also bump CACHE_VERSION in sw.js)
-const APP_VERSION = '0.7.1';
+const APP_VERSION = '0.8.0';
 const RELEASE_NOTES = [
+  {
+    version: '0.8.0',
+    date: '18 Apr 2026',
+    notes: [
+      'Pickup or Delivery choice at checkout — pickup waives the delivery fee; multi-shop pickup shows a warning.',
+      'Per-shop confirmation links in the WhatsApp message — shops tap their link, see the order, and reply "Ready / Need more time / Cannot fulfil" straight back to the customer on WhatsApp.',
+      'Phone number now required at checkout (the shop needs it to message you back).',
+      'Rider dispatch is now manual — waits until shop confirms ready and admin dispatches.',
+    ],
+  },
   {
     version: '0.7.1',
     date: '18 Apr 2026',
@@ -1544,28 +1561,47 @@ function buildOrderMessage() {
   const groups = cartGroupedByShop();
   const shopIds = Object.keys(groups);
   const { subtotal, delivery, total } = cartStats();
-  const addr = document.getElementById('addr').value.trim() || '(not provided)';
-  const phone = document.getElementById('phone').value.trim() || '(not provided)';
+  const addrEl = document.getElementById('addr');
+  const phoneEl = document.getElementById('phone');
+  const addr = (addrEl && addrEl.value.trim()) || '(not provided)';
+  const phone = (phoneEl && phoneEl.value.trim()) || '';
+  const mode = fulfilmentMode || 'delivery';
 
-  let msg = `🧺 *New Vyasaraghatta Order*\n\n`;
+  // Generate a short order ID the shops can reference
+  const orderId = 'VG' + Math.floor(10000 + Math.random() * 90000);
+
+  let msg = `🧺 *New Vyasaraghatta Order*\n`;
+  msg += mode === 'pickup' ? `🚶 *Pickup* — customer will collect\n\n` : `🏍️ *Delivery* — needs a rider\n\n`;
+
   shopIds.forEach(sid => {
     const shop = shops.find(s => s.id === sid);
     const lines = groups[sid];
     msg += `*${shop.name}* ${shop.emoji}\n`;
+    const shopItems = lines.map(l => ({ n: l.item.name, q: l.qty }));
+    const shopTotal = lines.reduce((a,l) => a + l.qty * l.item.price, 0);
     lines.forEach(l => {
       msg += `  • ${l.qty}× ${l.item.name} — ₹${l.qty * l.item.price}\n`;
     });
+    // Build the confirmation link for THIS shop (per-shop URL)
+    const confirmLink = buildConfirmLink(orderId, sid, shop.name, phone, '', shopItems, shopTotal, mode);
+    msg += `  👉 *Shop:* tap here when ready: ${confirmLink}\n`;
     msg += `\n`;
   });
+
   msg += `_Subtotal: ₹${subtotal}_\n`;
-  msg += `_Delivery: ₹${delivery}_\n`;
+  if (mode === 'delivery') msg += `_Delivery: ₹${delivery}_\n`;
   msg += `*Total: ₹${total}*\n\n`;
-  msg += `📍 Deliver to: ${addr}\n`;
-  if (window.__lastGpsCoords) {
-    const c = window.__lastGpsCoords;
-    msg += `📡 Map: https://maps.google.com/?q=${c.lat},${c.lng} (±${c.accuracy}m)\n`;
+
+  if (mode === 'delivery') {
+    msg += `📍 Deliver to: ${addr}\n`;
+    if (window.__lastGpsCoords) {
+      const c = window.__lastGpsCoords;
+      msg += `📡 Map: https://maps.google.com/?q=${c.lat},${c.lng} (±${c.accuracy}m)\n`;
+    }
   }
-  msg += `📞 Contact: ${phone}\n`;
+  msg += `📞 Customer: ${phone || '(not provided)'}\n`;
+  msg += `🔖 Order ID: ${orderId}\n`;
+
   if (voiceTranscript) {
     msg += `\n🎙️ *Voice note transcript:*\n"${voiceTranscript}"\n`;
   }
@@ -1573,11 +1609,32 @@ function buildOrderMessage() {
     msg += `\n_(Customer has a voice note — will send separately.)_\n`;
   }
   msg += `\n— Sent via Vyasaraghatta`;
+
+  // Stash the orderId so saveOrderToHistory can use it
+  window.__lastOrderId = orderId;
   return msg;
 }
 
 function sendViaWhatsApp() {
   if (Object.keys(cart).length === 0) { alert('Your basket is empty.'); return; }
+  // Phone is required for the confirm-link return flow
+  const phoneEl = document.getElementById('phone');
+  const phone = (phoneEl && phoneEl.value.trim().replace(/\D/g, '')) || '';
+  if (phone.length < 10) {
+    alert('Please enter your 10-digit phone number — the shop needs it to message you back when your order is ready.');
+    if (phoneEl) phoneEl.focus();
+    return;
+  }
+  // For delivery, address is also required
+  if (fulfilmentMode === 'delivery') {
+    const addrEl = document.getElementById('addr');
+    const addr = (addrEl && addrEl.value.trim()) || '';
+    if (addr.length < 5) {
+      alert('Please enter a delivery address — or switch to Pickup.');
+      if (addrEl) addrEl.focus();
+      return;
+    }
+  }
   const msg = buildOrderMessage();
   const encoded = encodeURIComponent(msg);
 
@@ -2711,3 +2768,158 @@ function applyPendingRemoteShops() {
 
 // Fire sync on startup (non-blocking)
 setTimeout(() => { syncRemoteShops(); }, 500);
+
+/* =====================================================================
+   FULFILMENT MODE — pickup vs delivery
+   ===================================================================== */
+
+let fulfilmentMode = 'delivery'; // 'delivery' | 'pickup'
+
+function setFulfilmentMode(mode) {
+  fulfilmentMode = mode;
+  document.getElementById('modeDelivery').classList.toggle('active', mode === 'delivery');
+  document.getElementById('modePickup').classList.toggle('active', mode === 'pickup');
+
+  // Hide delivery address field for pickup
+  const addrField = document.getElementById('addrField');
+  if (addrField) addrField.style.display = mode === 'pickup' ? 'none' : '';
+
+  // Warn about multi-shop pickup
+  const warning = document.getElementById('pickupWarning');
+  const shopIds = Object.keys(cartGroupedByShop());
+  if (mode === 'pickup' && shopIds.length > 1) {
+    warning.className = 'ocr-status';
+    warning.style.display = 'block';
+    warning.innerHTML = `⚠️ Your basket has items from <strong>${shopIds.length} shops</strong>. For pickup, you'll need to visit each shop yourself. Consider switching to delivery, or remove items from shops you won't visit.`;
+  } else if (mode === 'pickup') {
+    warning.style.display = 'none';
+  } else {
+    warning.style.display = 'none';
+  }
+
+  // Recalc cart: pickup means no delivery fee
+  renderCartSummary();
+}
+
+/* =====================================================================
+   SHOP CONFIRM LINK (B2 flow)
+   Each shop gets a unique link in the WhatsApp message. When the shop
+   taps it, a page loads that lets them reply "READY" on WhatsApp to
+   the customer, with a pre-filled message. No backend required.
+   ===================================================================== */
+
+function buildConfirmLink(orderId, shopId, shopName, customerPhone, customerName, items, total, mode) {
+  // Encode minimal order data into URL hash fragment.
+  // Hash fragment (#...) doesn't hit the server, stays client-side only.
+  const payload = {
+    o: orderId,
+    s: shopId,
+    sn: shopName,
+    cp: customerPhone,
+    cn: customerName || '',
+    i: items,        // [{n: name, q: qty}]
+    t: total,
+    m: mode,         // 'delivery' or 'pickup'
+  };
+  const base = location.origin + location.pathname.replace(/\/[^\/]*$/, '/');
+  const encoded = btoa(encodeURIComponent(JSON.stringify(payload)));
+  return `${base}#confirm=${encoded}`;
+}
+
+function parseConfirmHash() {
+  const m = location.hash.match(/^#confirm=(.+)$/);
+  if (!m) return null;
+  try {
+    return JSON.parse(decodeURIComponent(atob(m[1])));
+  } catch (e) {
+    console.warn('Bad confirm link:', e);
+    return null;
+  }
+}
+
+function showShopConfirmPage(data) {
+  const view = document.getElementById('view-confirm-shop');
+  if (!view) return;
+  const itemsHtml = data.i.map(it => `<li>${it.q}× ${escapeHtml(it.n)}</li>`).join('');
+  const modeLabel = data.m === 'pickup' ? '🚶 Customer will pick up' : '🏍️ Needs delivery (rider will come)';
+  view.innerHTML = `
+    <div style="padding: 10px 4px;">
+      <div style="font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); font-weight: 600; margin-bottom: 4px;">Vyasaraghatta</div>
+      <h2 style="font-size: 24px; margin: 0 0 4px;">Order for ${escapeHtml(data.sn || 'your shop')}</h2>
+      <p style="color: var(--ink-soft); font-size: 14px; margin: 0 0 14px;">Order #${escapeHtml(data.o)}</p>
+    </div>
+    <div class="panel">
+      <div class="voice-label">Items to prepare</div>
+      <ul style="padding-left: 20px; margin: 8px 0; line-height: 1.6;">${itemsHtml}</ul>
+      <div style="display:flex; justify-content:space-between; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--rule);">
+        <span>Total</span>
+        <strong>₹${data.t}</strong>
+      </div>
+    </div>
+    <div class="panel" style="background: var(--paper-2);">
+      <div style="font-size: 15px; font-weight: 600;">${modeLabel}</div>
+      <div style="font-size: 13px; color: var(--ink-soft); margin-top: 4px;">
+        Customer: ${escapeHtml(data.cn || 'Anonymous')} · 📞 ${escapeHtml(data.cp)}
+      </div>
+    </div>
+    <div class="panel">
+      <div class="voice-label">Ready to go?</div>
+      <div class="voice-sub">
+        Tap below to message the customer that their order is ready.
+        ${data.m === 'delivery' ? 'Then wait for the rider to arrive.' : 'They will come and collect it.'}
+      </div>
+      <button class="primary" onclick="shopSendReady('${escapeHtml(data.o)}', '${escapeHtml(data.sn)}', '${escapeHtml(data.cp)}', '${data.m}')" style="margin-top: 10px;">
+        ✓ Tell customer it's ready
+      </button>
+      <button class="secondary" onclick="shopSendDelay('${escapeHtml(data.o)}', '${escapeHtml(data.sn)}', '${escapeHtml(data.cp)}')" style="margin-top: 8px;">
+        Need more time
+      </button>
+      <button class="secondary" onclick="shopSendUnavailable('${escapeHtml(data.o)}', '${escapeHtml(data.sn)}', '${escapeHtml(data.cp)}')" style="margin-top: 8px; background: #fee2e2; color: var(--accent-2);">
+        Can't fulfil this order
+      </button>
+    </div>
+  `;
+  show('view-confirm-shop');
+}
+
+function shopSendReady(orderId, shopName, custPhone, mode) {
+  const modeMsg = mode === 'pickup'
+    ? 'You can come and collect it now.'
+    : 'The rider will arrive shortly for pickup.';
+  const msg = `✅ *${shopName}* — Order #${orderId} is *READY*.\n\n${modeMsg}\n\n— Replied via Vyasaraghatta`;
+  openWhatsAppTo(custPhone, msg);
+}
+
+function shopSendDelay(orderId, shopName, custPhone) {
+  const msg = `⏳ *${shopName}* — Order #${orderId} needs about 10 more minutes. Sorry for the wait.\n\n— Replied via Vyasaraghatta`;
+  openWhatsAppTo(custPhone, msg);
+}
+
+function shopSendUnavailable(orderId, shopName, custPhone) {
+  if (!confirm('Send "cannot fulfil" message to customer?')) return;
+  const msg = `❌ *${shopName}* — We can't fulfil Order #${orderId} right now. Please try another shop or contact us on WhatsApp to discuss. Sorry!\n\n— Replied via Vyasaraghatta`;
+  openWhatsAppTo(custPhone, msg);
+}
+
+function openWhatsAppTo(phone, msg) {
+  // Strip non-digits; default to India country code if missing
+  let num = (phone || '').replace(/\D/g, '');
+  if (num.length === 10) num = '91' + num;
+  const url = num
+    ? `https://wa.me/${num}?text=${encodeURIComponent(msg)}`
+    : `https://wa.me/?text=${encodeURIComponent(msg)}`;
+  const a = document.createElement('a');
+  a.href = url; a.target = '_blank'; a.rel = 'noopener';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+}
+
+// Auto-detect confirm link on app load
+function checkForConfirmLink() {
+  const data = parseConfirmHash();
+  if (data && data.o) {
+    showShopConfirmPage(data);
+  }
+}
+
+// Run after a moment (other startup code finishes first)
+setTimeout(checkForConfirmLink, 200);

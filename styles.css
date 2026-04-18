@@ -1327,3 +1327,41 @@ main {
   font-weight: 600;
 }
 .lang-row:active { background: var(--rule); }
+
+/* ====================================================================
+   PICKUP vs DELIVERY toggle
+   ==================================================================== */
+.fulfil-toggle {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.fulfil-btn {
+  background: var(--paper-2);
+  border: 1.5px solid transparent;
+  border-radius: 12px;
+  padding: 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+  color: var(--ink-soft);
+  transition: border .15s, background .15s;
+}
+.fulfil-btn.active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--ink);
+}
+.fulfil-title {
+  font-weight: 600;
+  font-size: 14px;
+}
+.fulfil-btn.active .fulfil-title {
+  color: var(--accent-2);
+}
+.fulfil-sub {
+  font-size: 11px;
+  color: var(--ink-soft);
+  margin-top: 1px;
+}

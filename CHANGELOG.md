@@ -7,6 +7,49 @@ and this project follows [Semantic Versioning](https://semver.org/) once it reac
 
 ---
 
+## [0.8.0] — 2026-04-18
+
+### Added
+- **Pickup or Delivery choice at checkout.** Toggle above the address
+  field. Pickup waives the delivery fee and hides the address field.
+  Multi-shop pickup shows a warning ("you'll need to visit each shop
+  yourself") but still lets the customer proceed.
+- **Per-shop confirmation links in WhatsApp message.** Each shop in
+  the order gets its own tap-to-confirm URL. When the shop taps, the
+  app opens on their phone with a clean summary and three buttons:
+  *Ready* / *Need more time* / *Can't fulfil*. Each button composes
+  a pre-filled WhatsApp reply to the customer. No backend required —
+  all order data is encoded in the URL hash fragment.
+- **Phone number required** at checkout (needed so shops can message
+  back via the confirmation links).
+
+### Changed
+- Rider dispatch is now manual — the app no longer auto-dispatches
+  when a customer places an order. Admin watches WhatsApp, waits for
+  shops to confirm ready, then dispatches the nearest rider.
+- Payment options simplified to Cash / UPI (the "on delivery" label
+  was removed since pickup orders don't need it).
+
+### How the flow works now
+1. Customer builds cart, picks pickup or delivery, sends via WhatsApp.
+2. Message arrives with per-shop items + a confirm link for each shop.
+3. Each shop taps their link on their phone → sees order → taps Ready
+   → pre-filled WhatsApp message goes back to the customer.
+4. Customer sees "Ready" messages. If pickup, they go collect. If
+   delivery, they forward confirmations to the admin, who dispatches
+   the nearest rider.
+5. Rider picks up from each shop, delivers, collects cash.
+
+### Known limitations
+- The confirm link only lets the shop send a WhatsApp message back —
+  the customer's app doesn't "know" the shop confirmed (no backend).
+  This is intentional for the pilot and can be upgraded with Firebase
+  later.
+- "Customer messages go to WhatsApp's contact picker" — pilot admin
+  has to tell customers which number(s) to send to.
+
+---
+
 ## [0.7.1] — 2026-04-18
 
 ### Added

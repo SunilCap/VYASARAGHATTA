@@ -134,8 +134,31 @@
     <h2 style="font-size: 24px; margin-bottom: 6px;">Your basket</h2>
     <p style="color: var(--ink-soft); font-size: 14px; margin: 0 0 14px;">Review your order, add a voice note if you like, then share it on WhatsApp.</p>
     <div id="cartSummary"></div>
+
+    <!-- Pickup vs delivery toggle -->
+    <div class="panel" id="fulfilmentPanel">
+      <div class="voice-label" style="margin-bottom: 8px;">How would you like it?</div>
+      <div class="fulfil-toggle">
+        <button id="modeDelivery" class="fulfil-btn active" onclick="setFulfilmentMode('delivery')">
+          <span style="font-size: 18px;">🏍️</span>
+          <div>
+            <div class="fulfil-title">Delivery</div>
+            <div class="fulfil-sub">To your door, via rider</div>
+          </div>
+        </button>
+        <button id="modePickup" class="fulfil-btn" onclick="setFulfilmentMode('pickup')">
+          <span style="font-size: 18px;">🚶</span>
+          <div>
+            <div class="fulfil-title">Pickup</div>
+            <div class="fulfil-sub">You collect from shop</div>
+          </div>
+        </button>
+      </div>
+      <div id="pickupWarning" class="ocr-status" style="display:none; margin-top: 10px;"></div>
+    </div>
+
     <div class="panel">
-      <div class="field"><span class="lbl">Deliver to</span>
+      <div id="addrField" class="field"><span class="lbl">Deliver to</span>
         <div class="addr-row">
           <input id="addr" type="text" placeholder="House no., street, landmark" value="Near Anjaneya temple, 2nd cross" />
           <button type="button" class="gps-btn" onclick="useMyLocation()" aria-label="Use my current location">
@@ -144,11 +167,17 @@
         </div>
         <div id="gpsStatus" class="gps-status"></div>
       </div>
-      <div class="field"><span class="lbl">Phone number</span>
-        <input id="phone" type="tel" placeholder="10-digit mobile" value="98xxxxxx21" />
+      <div class="field"><span class="lbl">Your phone number <span style="color: var(--accent-2);">*</span></span>
+        <input id="phone" type="tel" placeholder="10-digit mobile" inputmode="numeric" />
+        <div style="font-size: 11px; color: var(--ink-soft); margin-top: 4px;">
+          Needed so the shop can message you back when ready.
+        </div>
       </div>
       <div class="field" style="margin-bottom: 0;"><span class="lbl">Payment</span>
-        <select><option>Cash on delivery</option><option>UPI on delivery</option></select>
+        <select id="paymentMethod">
+          <option>Cash</option>
+          <option>UPI</option>
+        </select>
       </div>
     </div>
 
@@ -162,6 +191,9 @@
     <button class="primary" id="placeBtn" onclick="sendViaWhatsApp()">📱 Send order on WhatsApp</button>
     <button class="secondary" style="margin-top: 8px;" onclick="sendViaShareSheet()">Share another way</button>
   </section>
+
+  <!-- Shop confirmation page — loaded when a shopkeeper taps the confirm link -->
+  <section id="view-confirm-shop" class="view"></section>
 
   <section id="view-track" class="view">
     <div class="track-hero">
