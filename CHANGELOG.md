@@ -7,6 +7,24 @@ and this project follows [Semantic Versioning](https://semver.org/) once it reac
 
 ---
 
+## [0.9.2] — 2026-04-18
+
+### Fixed
+- **Voice note button on Photo Order screen.** Tapping "Start recording"
+  appeared to do nothing — recording actually started, but the UI
+  updates (timer, stop button, playback) were being drawn to the hidden
+  checkout page's voice panel instead of the photo-order one. The
+  recorder now detects which view is active and renders to the correct
+  panel.
+
+### Added
+- **Remember customer details.** Your name, phone number, and delivery
+  address are saved on this device after a successful order, and
+  pre-filled the next time you open checkout or the photo-order flow.
+  You can always edit them before sending.
+
+---
+
 ## [0.9.1] — 2026-04-18
 
 ### Added

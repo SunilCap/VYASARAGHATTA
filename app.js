@@ -123,6 +123,10 @@ function show(id) {
     renderCartSummary();
     // Re-apply the current fulfilment mode so the UI reflects it (warning, address visibility)
     if (typeof setFulfilmentMode === 'function') setFulfilmentMode(fulfilmentMode || 'delivery');
+    if (typeof prefillCheckoutFields === 'function') prefillCheckoutFields();
+  }
+  if (id === 'view-photo-order') {
+    if (typeof prefillPhotoOrderFields === 'function') prefillPhotoOrderFields();
   }
 }
 
@@ -838,8 +842,16 @@ function toggleStock(id) {
    ===================================================================== */
 
 // Single source of truth — bump this on every release (also bump CACHE_VERSION in sw.js)
-const APP_VERSION = '0.9.1';
+const APP_VERSION = '0.9.2';
 const RELEASE_NOTES = [
+  {
+    version: '0.9.2',
+    date: '18 Apr 2026',
+    notes: [
+      'Fixed: Voice note button did nothing on the Photo Order screen — the recorder was writing to the wrong panel. Now works on both screens.',
+      'Added: Remember your name, phone and delivery address across orders — auto-filled next time so you don\'t have to re-type.',
+    ],
+  },
   {
     version: '0.9.1',
     date: '18 Apr 2026',
@@ -1543,12 +1555,21 @@ function formatTime(sec) {
 }
 
 function renderVoiceUI(state) {
-  const box = document.getElementById('voiceBox');
+  // Pick whichever voice panel is in the currently-active view
+  const activeView = document.querySelector('.view.active')?.id || '';
+  let box = null;
+  if (activeView === 'view-photo-order') {
+    box = document.getElementById('poVoiceBox');
+  } else {
+    box = document.getElementById('voiceBox');
+  }
+  // Fallback: whichever exists
+  if (!box) box = document.getElementById('poVoiceBox') || document.getElementById('voiceBox');
   if (!box) return;
   if (state === 'idle') {
     box.innerHTML = `
-      <div class="voice-label">Add a voice note (optional)</div>
-      <div class="voice-sub">Tell the shop exactly what you need. In any language.</div>
+      <div class="voice-label">Voice note (optional)</div>
+      <div class="voice-sub">Tell us what you need. In any language.</div>
       <button class="voice-btn record" onclick="startVoiceRecording()">🎙️ Start recording</button>
     `;
   } else if (state === 'recording') {
@@ -1645,15 +1666,17 @@ function sendViaWhatsApp() {
     return;
   }
   // For delivery, address is also required
+  const addrEl = document.getElementById('addr');
+  const addr = (addrEl && addrEl.value.trim()) || '';
   if (fulfilmentMode === 'delivery') {
-    const addrEl = document.getElementById('addr');
-    const addr = (addrEl && addrEl.value.trim()) || '';
     if (addr.length < 5) {
       alert('Please enter a delivery address — or switch to Pickup.');
       if (addrEl) addrEl.focus();
       return;
     }
   }
+  // Remember for next time
+  saveCustomerDetails({ phone, address: addr });
   const msg = buildOrderMessage();
   const encoded = encodeURIComponent(msg);
 
@@ -2995,13 +3018,10 @@ function openPhotoOrder() {
   photoOrderFile = null;
   // Clear any previous voice/recording state so it starts fresh
   if (typeof clearVoiceRecording === 'function') clearVoiceRecording();
-  // Reset form fields
+  // Reset only the order-specific fields (NOT name/phone/addr — those are remembered)
   const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
   setVal('poNote', '');
   setVal('poBudget', '');
-  setVal('poName', '');
-  setVal('poPhone', '');
-  setVal('poAddr', '');
   setVal('poUrgency', 'today');
   setVal('poPayment', 'Cash');
   // Clear preview
@@ -3009,7 +3029,7 @@ function openPhotoOrder() {
   if (preview) preview.innerHTML = `<div style="color: var(--ink-soft); font-size: 13px;">No photo selected yet</div>`;
   // Show admin-phone warning if not set
   updateAdminWarning();
-  // Move voice recorder UI to this panel
+  // Reset voice recorder UI
   const vBox = document.getElementById('poVoiceBox');
   if (vBox) {
     vBox.innerHTML = `
@@ -3018,7 +3038,7 @@ function openPhotoOrder() {
       <button class="voice-btn record" onclick="startVoiceRecording()">🎙️ Start recording</button>
     `;
   }
-  show('view-photo-order');
+  show('view-photo-order'); // show() will call prefillPhotoOrderFields
 }
 
 function updateAdminWarning() {
@@ -3130,6 +3150,9 @@ function sendPhotoOrder() {
     alert('No admin phone configured. The admin needs to set their WhatsApp number in Shop mode → Settings first.');
     return;
   }
+
+  // Remember for next time
+  saveCustomerDetails({ name, phone, address: addr });
 
   const orderId = 'PHO' + Math.floor(10000 + Math.random() * 90000);
 
@@ -3445,3 +3468,61 @@ function checkForAdminReplyLink() {
   }
 }
 setTimeout(checkForAdminReplyLink, 250);
+
+/* =====================================================================
+   ADDRESS & CUSTOMER-DETAIL MEMORY
+   Remember the last-used delivery address, phone, and name so
+   customers don't have to retype on every order.
+   ===================================================================== */
+
+const CUSTOMER_DETAILS_KEY = 'vyasaraghatta.customerDetails.v1';
+
+function loadCustomerDetails() {
+  try {
+    const raw = localStorage.getItem(CUSTOMER_DETAILS_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch (e) {}
+  return { name: '', phone: '', address: '' };
+}
+
+function saveCustomerDetails(patch) {
+  try {
+    const current = loadCustomerDetails();
+    const next = { ...current, ...patch };
+    localStorage.setItem(CUSTOMER_DETAILS_KEY, JSON.stringify(next));
+  } catch (e) {}
+}
+
+// On app load, prefill checkout fields from memory (if empty)
+function prefillCustomerDetailsOnLoad() {
+  const d = loadCustomerDetails();
+  if (!d) return;
+  // Checkout flow
+  const addr = document.getElementById('addr');
+  const phone = document.getElementById('phone');
+  if (addr && !addr.value.trim() && d.address) addr.value = d.address;
+  if (phone && !phone.value.trim() && d.phone) phone.value = d.phone;
+}
+
+// Whenever customer enters the checkout OR photo-order view, prefill fields
+// This is triggered from show() when those views activate.
+function prefillCheckoutFields() {
+  const d = loadCustomerDetails();
+  const addr = document.getElementById('addr');
+  const phone = document.getElementById('phone');
+  if (addr && !addr.value.trim() && d.address) addr.value = d.address;
+  if (phone && !phone.value.trim() && d.phone) phone.value = d.phone;
+}
+
+function prefillPhotoOrderFields() {
+  const d = loadCustomerDetails();
+  const name = document.getElementById('poName');
+  const phone = document.getElementById('poPhone');
+  const addr = document.getElementById('poAddr');
+  if (name && !name.value.trim() && d.name) name.value = d.name;
+  if (phone && !phone.value.trim() && d.phone) phone.value = d.phone;
+  if (addr && !addr.value.trim() && d.address) addr.value = d.address;
+}
+
+// Do the initial prefill once the DOM is ready
+setTimeout(prefillCustomerDetailsOnLoad, 300);
