@@ -838,8 +838,16 @@ function toggleStock(id) {
    ===================================================================== */
 
 // Single source of truth — bump this on every release (also bump CACHE_VERSION in sw.js)
-const APP_VERSION = '0.9.0';
+const APP_VERSION = '0.9.1';
 const RELEASE_NOTES = [
+  {
+    version: '0.9.1',
+    date: '18 Apr 2026',
+    notes: [
+      'Admin reply link for photo orders — the WhatsApp message now includes a tap-to-reply link that opens an in-app form where admin lists items, enters prices, sets ETA, and sends a clean formatted confirmation back to the customer.',
+      'Separate "Confirm & send" and "Can\'t fulfil" paths so admin replies look professional every time.',
+    ],
+  },
   {
     version: '0.9.0',
     date: '18 Apr 2026',
@@ -3125,6 +3133,9 @@ function sendPhotoOrder() {
 
   const orderId = 'PHO' + Math.floor(10000 + Math.random() * 90000);
 
+  // Build the admin-reply link so admin can tap-to-reply cleanly on WhatsApp
+  const replyLink = buildAdminReplyLink(orderId, phone, name, addr, budget, urgency, payment);
+
   // Build a formatted message
   let msg = `📸 *Photo Order* (ID: ${orderId})\n\n`;
   msg += `👤 ${name}\n`;
@@ -3140,7 +3151,8 @@ function sendPhotoOrder() {
   msg += `\n`;
   if (note) msg += `📝 Note: ${note}\n\n`;
   if (voiceTranscript) msg += `🎙️ Voice: "${voiceTranscript}"\n\n`;
-  msg += `📎 *I'll attach the photo in the next message.*\n`;
+  msg += `📎 *I'll attach the photo in the next message.*\n\n`;
+  msg += `👇 *Admin: tap here to reply to this order:*\n${replyLink}\n`;
   msg += `\n— Sent via Vyasaraghatta`;
 
   // Save to customer history for their reference
@@ -3279,3 +3291,157 @@ function saveAdminSettingsForm() {
   closeAdminSettings();
   alert('✓ Admin settings saved.');
 }
+
+/* =====================================================================
+   ADMIN REPLY FLOW (Option A)
+   When customer sends a photo order, admin gets a link in the WhatsApp
+   message. Admin taps it → Vyasaraghatta opens → admin sees order
+   details + an input form → taps "Confirm & send" → WhatsApp opens
+   with a nicely formatted reply to the customer.
+   ===================================================================== */
+
+function buildAdminReplyLink(orderId, custPhone, custName, addr, budget, urgency, payment) {
+  const payload = {
+    o: orderId,
+    p: custPhone,
+    n: custName,
+    a: addr,
+    b: budget || '',
+    u: urgency || 'today',
+    pay: payment || 'Cash',
+  };
+  const base = location.origin + location.pathname.replace(/\/[^\/]*$/, '/');
+  const encoded = btoa(encodeURIComponent(JSON.stringify(payload)));
+  return `${base}#admin-reply=${encoded}`;
+}
+
+function parseAdminReplyHash() {
+  const m = location.hash.match(/^#admin-reply=(.+)$/);
+  if (!m) return null;
+  try {
+    return JSON.parse(decodeURIComponent(atob(m[1])));
+  } catch (e) {
+    console.warn('Bad admin-reply link:', e);
+    return null;
+  }
+}
+
+function showAdminReplyPage(data) {
+  const view = document.getElementById('view-admin-reply');
+  if (!view) return;
+  const urgencyLabel = data.u === 'now' ? '🔥 Now' : data.u === 'whenever' ? '🐢 No rush' : '📅 Today';
+  view.innerHTML = `
+    <div style="padding: 10px 4px;">
+      <div style="font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); font-weight: 600; margin-bottom: 4px;">Admin reply</div>
+      <h2 style="font-size: 24px; margin: 0 0 4px;">Photo order ${escapeHtml(data.o)}</h2>
+      <p style="color: var(--ink-soft); font-size: 14px; margin: 0 0 14px;">Fill in what you can provide. A formatted reply will be sent to the customer on WhatsApp.</p>
+    </div>
+
+    <div class="panel">
+      <div class="voice-label">Customer details</div>
+      <div style="font-size: 14px; line-height: 1.6; margin-top: 6px;">
+        👤 ${escapeHtml(data.n || '(no name)')}<br/>
+        📞 <a href="tel:${escapeHtml(data.p)}" style="color: var(--accent); text-decoration: none;">${escapeHtml(data.p)}</a><br/>
+        📍 ${escapeHtml(data.a || '(no address)')}<br/>
+        ${urgencyLabel} · 💰 ${escapeHtml(data.pay || 'Cash')}${data.b ? ' · 💵 Budget ' + escapeHtml(data.b) : ''}
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="voice-label">What did you find?</div>
+      <div class="voice-sub">List the items and prices you can supply. One line per item.</div>
+      <textarea id="arItems" rows="5" placeholder="e.g.&#10;Paracetamol 500mg (10 tabs) — ₹22&#10;Bandage roll — ₹45&#10;Antiseptic liquid (100ml) — ₹80" style="width:100%; padding:10px 12px; border:1px solid var(--rule); border-radius:10px; background:var(--paper); font-family:inherit; resize:vertical;"></textarea>
+    </div>
+
+    <div class="panel">
+      <div class="field">
+        <span class="lbl">Estimated total (₹)</span>
+        <input id="arTotal" type="number" inputmode="numeric" placeholder="e.g. 285" />
+      </div>
+      <div class="field">
+        <span class="lbl">Delivery fee (₹)</span>
+        <input id="arDelivery" type="number" inputmode="numeric" placeholder="e.g. 20" value="20" />
+      </div>
+      <div class="field" style="margin-bottom: 0;">
+        <span class="lbl">Ready in</span>
+        <select id="arEta">
+          <option value="15 min">15 minutes</option>
+          <option value="30 min" selected>30 minutes</option>
+          <option value="45 min">45 minutes</option>
+          <option value="1 hour">1 hour</option>
+          <option value="2 hours">2 hours</option>
+          <option value="same day">Same day</option>
+          <option value="tomorrow">Tomorrow</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="field" style="margin-bottom: 0;">
+        <span class="lbl">Note to customer (optional)</span>
+        <textarea id="arNote" rows="2" placeholder="e.g. 'Replacing Dettol with Savlon — out of stock' or 'Can send after 4 PM'" style="width:100%; padding:10px 12px; border:1px solid var(--rule); border-radius:10px; background:var(--paper); font-family:inherit; resize:vertical;"></textarea>
+      </div>
+    </div>
+
+    <button class="primary" onclick="sendAdminReplyConfirm(${JSON.stringify(data).replace(/"/g, '&quot;')})">
+      ✅ Confirm &amp; send to customer
+    </button>
+    <button class="secondary" style="margin-top: 8px; background: #fee2e2; color: var(--accent-2);" onclick="sendAdminReplyReject(${JSON.stringify(data).replace(/"/g, '&quot;')})">
+      ❌ Can't fulfil this order
+    </button>
+    <button class="secondary" style="margin-top: 8px;" onclick="show('view-browse')">Cancel</button>
+
+    <p style="font-size: 12px; color: var(--ink-soft); text-align: center; margin-top: 14px; line-height: 1.5;">
+      Tapping a button opens WhatsApp with a pre-filled reply to the customer.
+      Send it, and the order is considered confirmed.
+    </p>
+  `;
+  show('view-admin-reply');
+}
+
+function sendAdminReplyConfirm(data) {
+  const items = (document.getElementById('arItems').value || '').trim();
+  const total = parseInt(document.getElementById('arTotal').value, 10);
+  const delivery = parseInt(document.getElementById('arDelivery').value, 10) || 0;
+  const eta = document.getElementById('arEta').value;
+  const note = (document.getElementById('arNote').value || '').trim();
+
+  if (!items) { alert('Please list what items you can supply.'); return; }
+  if (isNaN(total) || total <= 0) { alert('Please enter an estimated total.'); return; }
+
+  const grandTotal = total + delivery;
+  let msg = `✅ *${escapeHtml(adminSettings.adminName || 'Admin')} — Order ${data.o} confirmed*\n\n`;
+  msg += `Hi ${data.n ? data.n + ', ' : ''}here's what I can send:\n\n`;
+  msg += items + '\n\n';
+  msg += `💰 Items: ₹${total}\n`;
+  msg += `🏍️ Delivery: ₹${delivery}\n`;
+  msg += `*Total: ₹${grandTotal}*\n\n`;
+  msg += `⏱️ Ready in: *${eta}*\n`;
+  msg += `💳 Payment: ${data.pay}\n`;
+  msg += `📍 Delivery to: ${data.a}\n`;
+  if (note) msg += `\n📝 ${note}\n`;
+  msg += `\nReply OK to confirm, or let me know if you want to change anything.\n`;
+  msg += `\n— Vyasaraghatta`;
+
+  openWhatsAppTo(data.p, msg);
+}
+
+function sendAdminReplyReject(data) {
+  const reason = prompt('Why can\'t you fulfil this order? (Customer will see this message)') || '';
+  if (!reason.trim()) return;
+  let msg = `❌ *${escapeHtml(adminSettings.adminName || 'Admin')} — Order ${data.o}*\n\n`;
+  msg += `Hi ${data.n ? data.n + ', ' : ''}sorry, I can't fulfil this order right now.\n\n`;
+  msg += `Reason: ${reason}\n\n`;
+  msg += `Please try again later or send a different order.\n`;
+  msg += `\n— Vyasaraghatta`;
+  openWhatsAppTo(data.p, msg);
+}
+
+// On load, also check for admin-reply hash in addition to the shop-confirm hash
+function checkForAdminReplyLink() {
+  const data = parseAdminReplyHash();
+  if (data && data.o) {
+    showAdminReplyPage(data);
+  }
+}
+setTimeout(checkForAdminReplyLink, 250);

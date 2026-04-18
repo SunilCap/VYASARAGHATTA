@@ -7,6 +7,32 @@ and this project follows [Semantic Versioning](https://semver.org/) once it reac
 
 ---
 
+## [0.9.1] — 2026-04-18
+
+### Added
+- **Admin reply flow for photo orders.** Every photo-order WhatsApp
+  message now includes a tap-to-reply link for the admin. Tapping it
+  opens Vyasaraghatta on the admin's phone with a structured form:
+  - Customer details (with tappable phone number to call)
+  - Free-text list of items you found + prices
+  - Estimated total, delivery fee, ETA dropdown
+  - Optional note to customer
+- Two outcomes: **"Confirm & send"** composes a formatted confirmation
+  WhatsApp message to the customer. **"Can't fulfil"** lets admin
+  reject with a reason.
+- Replies always look professional and consistent, saving admin from
+  typing the same structure every time.
+
+### Flow recap
+1. Customer sends photo order → admin receives message on WhatsApp
+2. Admin attaches photo / reads order
+3. Admin taps the 👇 reply link inside the message
+4. Vyasaraghatta opens → admin fills items, prices, ETA
+5. Tap Confirm → WhatsApp opens with pre-filled reply to customer
+6. Customer sees a clean confirmation and agrees → admin dispatches rider
+
+---
+
 ## [0.9.0] — 2026-04-18
 
 ### Added
