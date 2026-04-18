@@ -1241,3 +1241,89 @@ input, select, textarea {
   padding-top: 8px;
   border-top: 1px dashed var(--rule);
 }
+
+/* ====================================================================
+   FIX: checkout / long views cropped behind bottom bars
+   Cart bar + bottom nav can stack up to ~160px; ensure breathing room
+   ==================================================================== */
+#view-checkout,
+#view-history,
+#view-rider,
+#view-dash,
+#view-shop,
+#view-track {
+  padding-bottom: 24px;
+}
+/* When cart-bar is visible, extra room so checkout button isn't hidden */
+body {
+  padding-bottom: 100px;
+}
+main {
+  padding-bottom: 20px;
+}
+/* Primary buttons in views should have guaranteed space underneath */
+.view .primary:last-of-type,
+.view .secondary:last-of-type {
+  margin-bottom: 8px;
+}
+
+/* Admin toolbar (stacked buttons in shop admin) */
+.admin-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.admin-toolbar .primary,
+.admin-toolbar .secondary {
+  width: 100%;
+}
+
+/* Make modal body scrollable when content is tall */
+.modal ol, .modal p { margin-top: 0; }
+.modal ol code {
+  background: var(--paper-2);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+/* OCR language selector (next to camera button) */
+.search-lang {
+  flex-shrink: 0;
+  background: var(--paper-2);
+  border-radius: 999px;
+  padding: 0 10px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  white-space: nowrap;
+  margin-left: 2px;
+}
+.search-lang:active { background: var(--rule); color: var(--ink); }
+
+/* Language option rows inside the picker modal */
+.lang-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  padding: 14px 12px;
+  margin-bottom: 6px;
+  border-radius: 10px;
+  background: var(--paper-2);
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 500;
+  text-align: left;
+}
+.lang-row.selected {
+  background: var(--accent-soft);
+  border: 1px solid var(--accent);
+  color: var(--accent-2);
+  font-weight: 600;
+}
+.lang-row:active { background: var(--rule); }

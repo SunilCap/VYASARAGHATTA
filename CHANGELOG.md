@@ -7,6 +7,57 @@ and this project follows [Semantic Versioning](https://semver.org/) once it reac
 
 ---
 
+## [0.7.1] — 2026-04-18
+
+### Added
+- **OCR language picker.** Tap the 🌐 button next to the camera to
+  choose which language the photo should be read in. Seven options
+  available, each paired with English for mixed-script lists:
+  English, Kannada, Hindi, Tamil, Telugu, Malayalam, Marathi.
+- Language choice is remembered across sessions on the device.
+- First-use download per language is only ~2–4 MB (plus 2 MB for
+  Tesseract.js), instead of all ~17 MB upfront.
+
+### Design note
+- Loading all seven language models simultaneously was considered,
+  but rejected because Tesseract accuracy **drops** when multiple
+  similar scripts fight for the same characters, and first-use
+  download would bloat to ~20 MB. The picker approach keeps each
+  scan fast and accurate.
+
+---
+
+## [0.7.0] — 2026-04-18
+
+### Added
+- **Per-shop search bar.** Each shop's detail view now has its own
+  search box that filters items within that shop, live as you type.
+- **Shop export.** In Shop admin mode, every shop row has a 📤 button
+  that downloads the shop as a JSON file. There's also an "Export all
+  shops" button at the top to bulk-export the whole catalog.
+- **Remote shop sync.** The app fetches `./shops/index.json` on startup
+  and pulls every listed shop file, merging into the catalog. The
+  `shops/` folder in the repo contains a README explaining the full
+  publishing workflow (shop exports JSON → sends to admin on WhatsApp
+  → admin commits to `/shops/` and updates `index.json` → customers
+  see updates on next load).
+- **Kannada OCR.** The image-to-text reader now recognises Kannada
+  alongside English (`kan+eng`). First-use download includes the
+  Kannada language pack.
+
+### Fixed
+- **Checkout button no longer cropped** behind the bottom nav + cart
+  bar. Increased body bottom padding and added view-specific padding
+  for long scroll views (checkout, history, rider, dashboard).
+
+### Conflict resolution for remote sync
+- If a user has local admin edits on their device, remote sync will
+  **not** auto-overwrite them. They'll see a "Pull latest shops"
+  button in admin mode to manually apply remote data (and lose their
+  local edits). This keeps admins in control during the pilot.
+
+---
+
 ## [0.6.0] — 2026-04-18
 
 ### Added

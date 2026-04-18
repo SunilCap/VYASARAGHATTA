@@ -1,0 +1,6 @@
+{
+  "_comment": "This file lists all published shop JSONs. When you add a new shop file under /shops/, add its filename to the 'files' array below. The Vyasaraghatta app fetches this index on every load and then pulls each listed shop file. Leave the array empty to disable remote sync entirely.",
+  "version": 1,
+  "updatedAt": "2026-04-18",
+  "files": []
+}

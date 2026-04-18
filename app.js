@@ -286,14 +286,30 @@ function openShop(id) {
   document.getElementById('shopMeta').innerHTML =
     [catLabel(currentShop.category), ...currentShop.meta]
       .map((m,i) => i===0 ? m : `<span class="dot">·</span>${m}`).join('');
-  renderItems();
+  // Clear the in-shop search when entering a shop
+  const ss = document.getElementById('shopSearch');
+  if (ss) ss.value = '';
+  renderItems('');
   lastView = 'view-shop';
   show('view-shop');
 }
 
-function renderItems() {
+function filterShopItems(q) {
+  renderItems((q || '').trim().toLowerCase());
+}
+
+function renderItems(filterQuery) {
   const list = document.getElementById('itemList');
-  list.innerHTML = currentShop.items.map(it => {
+  const q = (filterQuery || '').toLowerCase();
+  const filteredItems = !q ? currentShop.items : currentShop.items.filter(it => {
+    const hay = (it.name + ' ' + (it.desc || '')).toLowerCase();
+    return q.split(/\s+/).filter(Boolean).every(w => hay.includes(w));
+  });
+  if (!filteredItems.length) {
+    list.innerHTML = `<div class="empty"><div class="em">🔍</div>No items match "${escapeHtml(filterQuery || '')}" in this shop.</div>`;
+    return;
+  }
+  list.innerHTML = filteredItems.map(it => {
     const qty = cart[it.id]?.qty || 0;
     const outClass = it.stock ? '' : 'out';
     const imageHTML = it.image
@@ -329,7 +345,10 @@ function changeQty(itemId, shopId, delta) {
   if (!cart[itemId]) cart[itemId] = { item, qty: 0, shopId };
   cart[itemId].qty += delta;
   if (cart[itemId].qty <= 0) delete cart[itemId];
-  if (currentShop && currentShop.id === shopId) renderItems();
+  if (currentShop && currentShop.id === shopId) {
+    const ss = document.getElementById('shopSearch');
+    renderItems(ss ? ss.value.trim().toLowerCase() : '');
+  }
   updateCartBar();
   if (document.getElementById('view-checkout').classList.contains('active')) renderCartSummary();
 }
@@ -812,8 +831,27 @@ function toggleStock(id) {
    ===================================================================== */
 
 // Single source of truth — bump this on every release (also bump CACHE_VERSION in sw.js)
-const APP_VERSION = '0.6.0';
+const APP_VERSION = '0.7.1';
 const RELEASE_NOTES = [
+  {
+    version: '0.7.1',
+    date: '18 Apr 2026',
+    notes: [
+      'OCR language picker — tap 🌐 next to the camera button to pick from English, Kannada, Hindi, Tamil, Telugu, Malayalam, or Marathi. Each language is paired with English for mixed-script shopping lists.',
+      'Language choice is remembered on the device for future scans.',
+    ],
+  },
+  {
+    version: '0.7.0',
+    date: '18 Apr 2026',
+    notes: [
+      'Per-shop search — find items inside a single shop with a dedicated search bar on the shop page.',
+      'Shop export/share — admins can export a single shop or all shops as JSON to share with the pilot admin for publishing.',
+      'Remote shop sync — app auto-fetches the latest published shops from the repo on load.',
+      'OCR now reads Kannada + English (previously English only).',
+      'Fixed: checkout button cropped behind the bottom bars.',
+    ],
+  },
   {
     version: '0.6.0',
     date: '18 Apr 2026',
@@ -920,6 +958,8 @@ function stampVersion() {
   });
 }
 stampVersion();
+// Sync OCR language button label with stored preference
+setTimeout(() => setOcrLanguage(ocrLanguage), 50);
 
 // Release-notes modal
 function openReleaseNotes() {
@@ -1092,10 +1132,17 @@ let editingShopId = null;
 function renderShopAdmin() {
   const list = document.getElementById('shopAdminList') || document.getElementById('menuList');
   if (!list) return;
+  const hasPending = !!window.__remoteShopsPending;
   list.innerHTML = `
-    <button class="primary" onclick="openShopEditor()" style="margin-bottom: 10px;">+ Add new shop</button>
-    <button class="secondary" onclick="resetShopsToDefault()" style="margin-bottom: 14px; font-size: 13px;">Reset to demo shops</button>
-    <div class="admin-hint">Tap a shop to manage its items.</div>
+    <div class="admin-toolbar">
+      <button class="primary" onclick="openShopEditor()">+ Add new shop</button>
+      <button class="secondary" onclick="exportAllShops()">📤 Export all shops</button>
+      ${hasPending
+        ? `<button class="secondary" style="border:1px solid var(--accent); color: var(--accent-2);" onclick="applyPendingRemoteShops()">⬇️ Pull latest shops (remote updates available)</button>`
+        : ''}
+      <button class="secondary" onclick="resetShopsToDefault()" style="font-size: 13px;">Reset to demo shops</button>
+    </div>
+    <div class="admin-hint">Tap a shop to manage its items. 📤 to export a shop as JSON for sharing.</div>
     ${shops.map(s => `
       <div class="admin-row" onclick="openShopItems('${s.id}')">
         <div class="admin-emoji">${s.emoji}</div>
@@ -1104,6 +1151,7 @@ function renderShopAdmin() {
           <div class="admin-meta">${catLabel(s.category)} · ${s.items.length} items</div>
         </div>
         <div class="admin-actions" onclick="event.stopPropagation();">
+          <button class="admin-btn" onclick="exportShop('${s.id}')" title="Export shop as JSON">📤</button>
           <button class="admin-btn" onclick="editShop('${s.id}')" title="Edit shop info">✏️</button>
           <button class="admin-btn danger" onclick="deleteShop('${s.id}')" title="Delete shop">×</button>
         </div>
@@ -2295,12 +2343,65 @@ function renderSearchResults(query) {
 
 /* =====================================================================
    OCR — Image text recognition via Tesseract.js (lazy-loaded)
-   Reads printed/handwritten text from uploaded images, matches against
-   the shop catalogue, and shows matches as search results.
+   User picks language per scan — keeps download size and accuracy sane.
+   Supports: English, Kannada, Hindi, Tamil, Telugu, Malayalam, Marathi.
    ===================================================================== */
 
-let tesseractPromise = null;
+// Languages supported by the picker. Each language downloads its model
+// on first use (~2–4 MB each). English is always paired in for mixed
+// Indic-English text (product names, prices).
+const OCR_LANGUAGES = [
+  { code: 'eng',     label: 'English' },
+  { code: 'kan+eng', label: 'Kannada + English' },
+  { code: 'hin+eng', label: 'Hindi + English' },
+  { code: 'tam+eng', label: 'Tamil + English' },
+  { code: 'tel+eng', label: 'Telugu + English' },
+  { code: 'mal+eng', label: 'Malayalam + English' },
+  { code: 'mar+eng', label: 'Marathi + English' },
+];
 
+// Default language — change this line to flip the default
+let ocrLanguage = localStorage.getItem('vyasaraghatta.ocrLang') || 'kan+eng';
+
+function setOcrLanguage(code) {
+  ocrLanguage = code;
+  try { localStorage.setItem('vyasaraghatta.ocrLang', code); } catch (e) {}
+  const label = OCR_LANGUAGES.find(l => l.code === code)?.label || code;
+  const langBtn = document.getElementById('ocrLangBtn');
+  if (langBtn) langBtn.textContent = `🌐 ${label.split(' +')[0]}`;
+}
+
+function openOcrLangPicker() {
+  const current = ocrLanguage;
+  const html = `
+    <div class="modal-backdrop show" id="ocrLangModal" onclick="if(event.target===this)closeOcrLangPicker()">
+      <div class="modal">
+        <h3>OCR language</h3>
+        <p style="font-size: 13px; color: var(--ink-soft); line-height: 1.5; margin-bottom: 10px;">
+          Pick the language of text in your photo.
+          Each language pack downloads once (~2–4 MB) and caches for later.
+        </p>
+        ${OCR_LANGUAGES.map(l => `
+          <button class="lang-row ${l.code === current ? 'selected' : ''}" onclick="setOcrLanguage('${l.code}'); closeOcrLangPicker();">
+            <span>${l.label}</span>
+            ${l.code === current ? '<span style="color: var(--accent);">✓</span>' : ''}
+          </button>
+        `).join('')}
+        <button class="secondary" style="margin-top: 10px;" onclick="closeOcrLangPicker()">Cancel</button>
+      </div>
+    </div>
+  `;
+  const div = document.createElement('div');
+  div.innerHTML = html;
+  document.body.appendChild(div.firstElementChild);
+}
+
+function closeOcrLangPicker() {
+  const m = document.getElementById('ocrLangModal');
+  if (m) m.remove();
+}
+
+let tesseractPromise = null;
 function loadTesseract() {
   if (tesseractPromise) return tesseractPromise;
   tesseractPromise = new Promise((resolve, reject) => {
@@ -2318,15 +2419,18 @@ async function handleOcrUpload(file) {
   if (!file) return;
   const status = document.getElementById('ocrStatus');
   const search = document.getElementById('homeSearch');
+  const langLabel = OCR_LANGUAGES.find(l => l.code === ocrLanguage)?.label || ocrLanguage;
   status.style.display = 'block';
   status.className = 'ocr-status';
-  status.innerHTML = '⏳ Loading image recognition…';
+  status.innerHTML = `⏳ Loading image reader (${langLabel})…`;
   try {
     const Tesseract = await loadTesseract();
-    status.innerHTML = '📸 Reading text from image… (this may take a few seconds)';
-    const result = await Tesseract.recognize(file, 'eng', {
+    status.innerHTML = `📸 Reading ${langLabel} text… (may take 5–20 seconds)`;
+    const result = await Tesseract.recognize(file, ocrLanguage, {
       logger: (m) => {
-        if (m.status === 'recognizing text' && m.progress) {
+        if (m.status === 'loading language traineddata' && m.progress) {
+          status.innerHTML = `⬇️ Downloading ${langLabel} model… ${Math.round(m.progress * 100)}%`;
+        } else if (m.status === 'recognizing text' && m.progress) {
           status.innerHTML = `📸 Reading… ${Math.round(m.progress * 100)}%`;
         }
       },
@@ -2334,29 +2438,26 @@ async function handleOcrUpload(file) {
     const rawText = (result.data.text || '').trim();
     if (!rawText) {
       status.className = 'ocr-status err';
-      status.innerHTML = '⚠️ Couldn\'t find any text in the image. Try a clearer photo with printed text.';
+      status.innerHTML = `⚠️ Couldn't find any ${langLabel.split(' +')[0]} text. Try a clearer photo or pick a different language with the 🌐 button.`;
       return;
     }
 
     // Match extracted text against catalogue
-    const words = rawText.toLowerCase().split(/[^a-z\u0900-\u097f\u0C80-\u0CFF]+/).filter(w => w.length >= 3);
+    const words = rawText.toLowerCase().split(/[^a-z0-9\u0900-\u097f\u0B80-\u0BFF\u0C00-\u0C7F\u0C80-\u0CFF\u0D00-\u0D7F]+/).filter(w => w.length >= 3);
     const matches = matchOcrToItems(words);
     if (!matches.length) {
       status.className = 'ocr-status err';
       status.innerHTML = `
         Found text but no matching items:<br/>
-        <em style="font-size: 12px;">"${escapeHtml(rawText.slice(0, 120))}${rawText.length > 120 ? '…' : ''}"</em><br/>
+        <em style="font-size: 12px;">"${escapeHtml(rawText.slice(0, 140))}${rawText.length > 140 ? '…' : ''}"</em><br/>
         <button class="admin-btn" style="margin-top: 8px;" onclick="useOcrTextAsSearch('${escapeHtml(rawText).replace(/'/g,"\\'")}')">Search this text instead</button>
       `;
       return;
     }
 
     status.className = 'ocr-status ok';
-    status.innerHTML = `✓ Found ${matches.length} matching item${matches.length === 1 ? '' : 's'} — showing below.`;
+    status.innerHTML = `✓ Found ${matches.length} matching item${matches.length === 1 ? '' : 's'} from ${langLabel} photo — showing below.`;
 
-    // Put the extracted "best guess" query into the search box and show results
-    const guessedQuery = matches.slice(0, 3).map(m => m.item.name).join(' OR ');
-    // Show results directly without overwriting search input
     const panel = document.getElementById('searchResults');
     const browse = document.getElementById('browseContent');
     if (browse) browse.style.display = 'none';
@@ -2455,3 +2556,158 @@ function clearOcr() {
   const file = document.getElementById('ocrFileInput');
   if (file) file.value = '';
 }
+
+/* =====================================================================
+   SHOP EXPORT / IMPORT
+   Admin exports shop (or all shops) as JSON. You publish JSON files
+   to GitHub under /shops/<filename>.json, then the app fetches them
+   on load and merges into the default catalog.
+   ===================================================================== */
+
+// ------- EXPORT (admin side) -------
+
+function exportShop(shopId) {
+  const shop = shops.find(s => s.id === shopId);
+  if (!shop) return;
+  const payload = {
+    type: 'vyasaraghatta-shop-export',
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    shop: JSON.parse(JSON.stringify(shop)),  // deep clone
+  };
+  const filename = `shop-${slugify(shop.name)}.json`;
+  downloadJson(filename, payload);
+  showExportHelp(shop.name, filename);
+}
+
+function exportAllShops() {
+  const payload = {
+    type: 'vyasaraghatta-catalog-export',
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    shops: JSON.parse(JSON.stringify(shops)),
+  };
+  downloadJson('all-shops.json', payload);
+  showExportHelp('all shops', 'all-shops.json');
+}
+
+function slugify(s) {
+  return (s || 'shop')
+    .toLowerCase()
+    .replace(/&/g, 'and')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40);
+}
+
+function downloadJson(filename, obj) {
+  const blob = new Blob([JSON.stringify(obj, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function showExportHelp(name, filename) {
+  const html = `
+    <div class="modal-backdrop show" id="exportHelpModal" onclick="if(event.target===this)closeExportHelp()">
+      <div class="modal">
+        <h3>Shop exported ✓</h3>
+        <p style="font-size: 14px; color: var(--ink-soft); line-height: 1.5;">
+          Downloaded <strong>${escapeHtml(filename)}</strong> to your phone.
+        </p>
+        <p style="font-size: 14px; color: var(--ink-soft); line-height: 1.5;">
+          To make customers see this:
+        </p>
+        <ol style="font-size: 13px; line-height: 1.6; padding-left: 20px; color: var(--ink);">
+          <li>Send the JSON file to the admin (Sunil) on WhatsApp or email.</li>
+          <li>Admin uploads it to the GitHub repo under the <code>shops/</code> folder.</li>
+          <li>Admin updates <code>shops/index.json</code> to list the new file.</li>
+          <li>All customers will see the latest data when their app next refreshes.</li>
+        </ol>
+        <p style="font-size: 12px; color: var(--ink-soft); margin-top: 10px; padding: 8px; background: var(--paper-2); border-radius: 6px;">
+          💡 <strong>Tip:</strong> for urgent updates, send the JSON on WhatsApp with a note. Admin can push it in minutes.
+        </p>
+        <button class="primary" onclick="closeExportHelp()">OK</button>
+      </div>
+    </div>
+  `;
+  const div = document.createElement('div');
+  div.innerHTML = html;
+  document.body.appendChild(div.firstElementChild);
+}
+
+function closeExportHelp() {
+  const m = document.getElementById('exportHelpModal');
+  if (m) m.remove();
+}
+
+// ------- IMPORT (customer side) -------
+
+// The app can auto-fetch the published catalog from GitHub.
+// Uses relative path so it works on GitHub Pages under any subdirectory.
+// Admin publishes /shops/index.json with list of shop JSON filenames.
+const REMOTE_INDEX_URL = './shops/index.json';
+
+async function syncRemoteShops() {
+  // Respect local edits: if user has hand-edited shops (via admin),
+  // we don't overwrite unless user explicitly syncs.
+  const hasLocalEdits = !!localStorage.getItem(STORAGE_KEY);
+  try {
+    const idxRes = await fetch(REMOTE_INDEX_URL, { cache: 'no-cache' });
+    if (!idxRes.ok) return { ok: false, reason: 'no-index' };
+    const idx = await idxRes.json();
+    if (!idx || !Array.isArray(idx.files)) return { ok: false, reason: 'bad-index' };
+
+    const fetched = [];
+    for (const file of idx.files) {
+      try {
+        const res = await fetch(`./shops/${file}`, { cache: 'no-cache' });
+        if (!res.ok) continue;
+        const data = await res.json();
+        if (data.shop) fetched.push(data.shop);
+        else if (Array.isArray(data.shops)) fetched.push(...data.shops);
+      } catch (e) {
+        console.warn('Could not fetch', file, e);
+      }
+    }
+    if (!fetched.length) return { ok: false, reason: 'no-shops' };
+
+    // Merge: remote shops override by id; new ones are added.
+    const byId = new Map(shops.map(s => [s.id, s]));
+    fetched.forEach(s => byId.set(s.id, s));
+    const merged = Array.from(byId.values());
+
+    // Only auto-apply if user hasn't manually edited locally
+    if (!hasLocalEdits) {
+      shops.length = 0;
+      merged.forEach(s => shops.push(s));
+      renderShops();
+      console.log(`[Vyasaraghatta] Synced ${fetched.length} shop(s) from remote.`);
+    } else {
+      // Stash for manual apply via "Pull latest shops"
+      window.__remoteShopsPending = merged;
+      console.log(`[Vyasaraghatta] Remote sync available. Use "Pull latest" in admin.`);
+    }
+    return { ok: true, count: fetched.length, pending: hasLocalEdits };
+  } catch (e) {
+    console.warn('Remote shop sync failed:', e);
+    return { ok: false, reason: 'error', error: e.message };
+  }
+}
+
+function applyPendingRemoteShops() {
+  if (!window.__remoteShopsPending) { alert('No remote updates pending.'); return; }
+  if (!confirm('Replace your local edits with the latest remote shop data? Your local changes will be lost.')) return;
+  shops.length = 0;
+  window.__remoteShopsPending.forEach(s => shops.push(s));
+  saveShops();
+  window.__remoteShopsPending = null;
+  renderShops();
+  renderShopAdmin();
+  alert('✓ Latest shops pulled.');
+}
+
+// Fire sync on startup (non-blocking)
+setTimeout(() => { syncRemoteShops(); }, 500);

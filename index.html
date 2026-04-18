@@ -84,6 +84,7 @@
     <div class="search search-combo">
       <span aria-hidden="true" class="search-ico">🔎</span>
       <input id="homeSearch" type="text" placeholder="Search items across all shops…" autocomplete="off" />
+      <button id="ocrLangBtn" class="search-lang" onclick="openOcrLangPicker()" title="OCR language" aria-label="Choose OCR language">🌐 Kan</button>
       <button class="search-cam" onclick="document.getElementById('ocrFileInput').click()" title="Upload a photo of your list" aria-label="Upload photo of shopping list">📷</button>
       <input id="ocrFileInput" type="file" accept="image/*" capture="environment" style="display:none;" onchange="handleOcrUpload(this.files[0])" />
     </div>
@@ -119,6 +120,10 @@
     <div class="shop-header">
       <h2 id="shopName"></h2>
       <div class="shop-meta" id="shopMeta"></div>
+    </div>
+    <div class="search" style="margin-top: 14px;">
+      <span aria-hidden="true">🔎</span>
+      <input id="shopSearch" type="text" placeholder="Search in this shop…" autocomplete="off" oninput="filterShopItems(this.value)" />
     </div>
     <div class="section-title">Items</div>
     <div id="itemList"></div>
