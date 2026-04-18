@@ -838,8 +838,18 @@ function toggleStock(id) {
    ===================================================================== */
 
 // Single source of truth — bump this on every release (also bump CACHE_VERSION in sw.js)
-const APP_VERSION = '0.8.0';
+const APP_VERSION = '0.9.0';
 const RELEASE_NOTES = [
+  {
+    version: '0.9.0',
+    date: '18 Apr 2026',
+    notes: [
+      'New: "Order by photo" — big button on home screen. Send a photo of your list + details + voice note to admin on WhatsApp; admin handles everything.',
+      'On phones that support it, the photo is attached directly via native share. Otherwise the text message is pre-filled and you attach the photo in WhatsApp.',
+      'New: Admin settings in Shop mode — set your WhatsApp number so photo orders can reach you.',
+      'Photo orders appear in customer order history with a distinct green-bordered card.',
+    ],
+  },
   {
     version: '0.8.0',
     date: '18 Apr 2026',
@@ -1153,6 +1163,7 @@ function renderShopAdmin() {
   list.innerHTML = `
     <div class="admin-toolbar">
       <button class="primary" onclick="openShopEditor()">+ Add new shop</button>
+      <button class="secondary" onclick="openAdminSettings()">⚙️ Admin settings (WhatsApp number)</button>
       <button class="secondary" onclick="exportAllShops()">📤 Export all shops</button>
       ${hasPending
         ? `<button class="secondary" style="border:1px solid var(--accent); color: var(--accent-2);" onclick="applyPendingRemoteShops()">⬇️ Pull latest shops (remote updates available)</button>`
@@ -2245,7 +2256,30 @@ function renderCustomerHistory() {
       <h2 style="font-size: 24px; margin: 0;">Your orders</h2>
       <button class="admin-btn" onclick="clearCustomerHistory()" title="Clear history">🗑️</button>
     </div>
-    ${list.map(o => `
+    ${list.map(o => o.photoOrder ? `
+      <div class="order-history-card photo-order-card" onclick="toggleOrderExpand('${o.id}')">
+        <div class="order-history-head">
+          <div>
+            <div class="order-history-id">📸 ${o.id}</div>
+            <div class="order-history-date">${formatDateShort(o.date)} · Photo order</div>
+          </div>
+          <div class="order-history-total" style="font-size: 13px; color: var(--accent-2);">Sent to admin</div>
+        </div>
+        <div class="order-history-shops">
+          <span class="tag">⏱️ ${o.urgency || 'today'}</span>
+          ${o.budget ? `<span class="tag">💵 ${o.budget}</span>` : ''}
+          <span class="tag">💰 ${o.payment || 'Cash'}</span>
+        </div>
+        <div id="order-details-${o.id}" class="order-history-details" style="display: none;">
+          ${o.note ? `<div style="margin-top:8px;"><strong>Note:</strong> ${escapeHtml(o.note)}</div>` : ''}
+          ${o.transcript ? `<div style="margin-top:4px;"><strong>Voice:</strong> "${escapeHtml(o.transcript)}"</div>` : ''}
+          <div class="order-history-footer">
+            <div style="font-size: 12px; color: var(--ink-soft);">👤 ${escapeHtml(o.name || '')} · 📞 ${escapeHtml(o.phone || '')}</div>
+            <div style="font-size: 12px; color: var(--ink-soft); margin-top: 4px;">📍 ${escapeHtml(o.address || '')}</div>
+          </div>
+        </div>
+      </div>
+    ` : `
       <div class="order-history-card" onclick="toggleOrderExpand('${o.id}')">
         <div class="order-history-head">
           <div>
@@ -2923,3 +2957,325 @@ function checkForConfirmLink() {
 
 // Run after a moment (other startup code finishes first)
 setTimeout(checkForConfirmLink, 200);
+
+/* =====================================================================
+   PHOTO-ORDER FLOW — customer sends image + details to admin on WhatsApp
+   ===================================================================== */
+
+// Admin settings persist separately from shop data so they're not
+// exported when a shop owner hits "Export all shops".
+const ADMIN_SETTINGS_KEY = 'vyasaraghatta.adminSettings.v1';
+
+function loadAdminSettings() {
+  try {
+    const raw = localStorage.getItem(ADMIN_SETTINGS_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch (e) {}
+  return { adminPhone: '', adminName: '' };
+}
+
+function saveAdminSettings(s) {
+  try { localStorage.setItem(ADMIN_SETTINGS_KEY, JSON.stringify(s)); } catch (e) {}
+}
+
+let adminSettings = loadAdminSettings();
+
+// State for photo-order — keeps the selected image file until user sends
+let photoOrderFile = null;
+
+function openPhotoOrder() {
+  photoOrderFile = null;
+  // Clear any previous voice/recording state so it starts fresh
+  if (typeof clearVoiceRecording === 'function') clearVoiceRecording();
+  // Reset form fields
+  const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+  setVal('poNote', '');
+  setVal('poBudget', '');
+  setVal('poName', '');
+  setVal('poPhone', '');
+  setVal('poAddr', '');
+  setVal('poUrgency', 'today');
+  setVal('poPayment', 'Cash');
+  // Clear preview
+  const preview = document.getElementById('photoOrderPreview');
+  if (preview) preview.innerHTML = `<div style="color: var(--ink-soft); font-size: 13px;">No photo selected yet</div>`;
+  // Show admin-phone warning if not set
+  updateAdminWarning();
+  // Move voice recorder UI to this panel
+  const vBox = document.getElementById('poVoiceBox');
+  if (vBox) {
+    vBox.innerHTML = `
+      <div class="voice-label">Voice note (optional)</div>
+      <div class="voice-sub">Speak in any language.</div>
+      <button class="voice-btn record" onclick="startVoiceRecording()">🎙️ Start recording</button>
+    `;
+  }
+  show('view-photo-order');
+}
+
+function updateAdminWarning() {
+  const warn = document.getElementById('poAdminWarning');
+  if (!warn) return;
+  if (!adminSettings.adminPhone) {
+    warn.style.display = 'block';
+    warn.innerHTML = `⚠️ No admin phone set. The admin needs to set their WhatsApp number in Shop mode → ⚙️ Settings before this feature works.`;
+  } else {
+    warn.style.display = 'none';
+  }
+}
+
+function onPhotoOrderFileChosen(file) {
+  if (!file) return;
+  photoOrderFile = file;
+  const preview = document.getElementById('photoOrderPreview');
+  if (!preview) return;
+  // Show a preview thumbnail
+  const url = URL.createObjectURL(file);
+  const sizeKb = Math.round(file.size / 1024);
+  preview.innerHTML = `
+    <img src="${url}" alt="Order photo preview" />
+    <div class="photo-preview-meta">
+      📎 ${escapeHtml(file.name || 'photo')} · ${sizeKb} KB
+      <button class="admin-btn" onclick="clearPhotoOrderImage()" title="Remove" style="margin-left: auto;">×</button>
+    </div>
+  `;
+}
+
+function clearPhotoOrderImage() {
+  photoOrderFile = null;
+  const preview = document.getElementById('photoOrderPreview');
+  if (preview) preview.innerHTML = `<div style="color: var(--ink-soft); font-size: 13px;">No photo selected yet</div>`;
+  const file = document.getElementById('photoOrderFile');
+  if (file) file.value = '';
+}
+
+function useMyLocationForPhotoOrder() {
+  // Reuse the existing GPS logic but target the photo-order fields
+  const icon = document.getElementById('poGpsIcon');
+  const label = document.getElementById('poGpsLabel');
+  const status = document.getElementById('poGpsStatus');
+  const addrInput = document.getElementById('poAddr');
+  if (!navigator.geolocation) {
+    status.textContent = '⚠️ Location not supported on this browser';
+    status.className = 'gps-status err';
+    return;
+  }
+  icon.textContent = '⏳';
+  label.textContent = 'Finding…';
+  status.textContent = 'Please allow location access when prompted.';
+  status.className = 'gps-status';
+  navigator.geolocation.getCurrentPosition(
+    async (pos) => {
+      const { latitude, longitude, accuracy } = pos.coords;
+      status.textContent = `📡 Got location (±${Math.round(accuracy)}m). Looking up address…`;
+      try {
+        const res = await fetch(
+          `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=18&addressdetails=1`,
+          { headers: { 'Accept-Language': 'en' } }
+        );
+        if (!res.ok) throw new Error('Lookup failed');
+        const data = await res.json();
+        const a = data.address || {};
+        const parts = [a.house_number, a.road, a.neighbourhood || a.suburb, a.village || a.town || a.city, a.state].filter(Boolean);
+        addrInput.value = parts.join(', ') || data.display_name || `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
+        status.innerHTML = `✓ Location set. <a href="https://www.openstreetmap.org/?mlat=${latitude}&mlon=${longitude}&zoom=18" target="_blank" rel="noopener" style="color: var(--accent); text-decoration: underline;">View on map</a>`;
+        status.className = 'gps-status ok';
+        window.__lastPoGps = { lat: latitude, lng: longitude, accuracy: Math.round(accuracy) };
+      } catch (e) {
+        addrInput.value = `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
+        status.textContent = `✓ Location set (±${Math.round(accuracy)}m). Could not resolve address.`;
+        status.className = 'gps-status ok';
+        window.__lastPoGps = { lat: latitude, lng: longitude, accuracy: Math.round(accuracy) };
+      }
+      icon.textContent = '📍';
+      label.textContent = 'GPS';
+    },
+    (err) => {
+      const msg = err.code === 1 ? 'Permission denied.' :
+                  err.code === 2 ? 'Position unavailable.' :
+                  err.code === 3 ? 'Timed out.' : 'Error.';
+      status.textContent = '✗ ' + msg;
+      status.className = 'gps-status err';
+      icon.textContent = '📍';
+      label.textContent = 'GPS';
+    },
+    { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 }
+  );
+}
+
+function sendPhotoOrder() {
+  // Validate
+  if (!photoOrderFile) { alert('Please add a photo first.'); return; }
+  const name = (document.getElementById('poName').value || '').trim();
+  const phone = (document.getElementById('poPhone').value || '').trim().replace(/\D/g, '');
+  const addr = (document.getElementById('poAddr').value || '').trim();
+  const note = (document.getElementById('poNote').value || '').trim();
+  const budget = document.getElementById('poBudget').value || '';
+  const urgency = document.getElementById('poUrgency').value;
+  const payment = document.getElementById('poPayment').value;
+
+  if (!name) { alert('Please enter your name.'); return; }
+  if (phone.length < 10) { alert('Please enter your 10-digit phone number.'); return; }
+  if (!addr || addr.length < 5) { alert('Please enter your delivery address.'); return; }
+
+  if (!adminSettings.adminPhone) {
+    alert('No admin phone configured. The admin needs to set their WhatsApp number in Shop mode → Settings first.');
+    return;
+  }
+
+  const orderId = 'PHO' + Math.floor(10000 + Math.random() * 90000);
+
+  // Build a formatted message
+  let msg = `📸 *Photo Order* (ID: ${orderId})\n\n`;
+  msg += `👤 ${name}\n`;
+  msg += `📞 ${phone}\n`;
+  msg += `📍 ${addr}\n`;
+  if (window.__lastPoGps) {
+    const c = window.__lastPoGps;
+    msg += `📡 Map: https://maps.google.com/?q=${c.lat},${c.lng}\n`;
+  }
+  msg += `⏱️ Urgency: ${urgency}\n`;
+  msg += `💰 Payment: ${payment}\n`;
+  if (budget) msg += `💵 Budget: ${budget}\n`;
+  msg += `\n`;
+  if (note) msg += `📝 Note: ${note}\n\n`;
+  if (voiceTranscript) msg += `🎙️ Voice: "${voiceTranscript}"\n\n`;
+  msg += `📎 *I'll attach the photo in the next message.*\n`;
+  msg += `\n— Sent via Vyasaraghatta`;
+
+  // Save to customer history for their reference
+  savePhotoOrderToHistory({
+    id: orderId, date: Date.now(), name, phone, addr, note, budget,
+    urgency, payment, transcript: voiceTranscript || '',
+    hasImage: true,
+  });
+
+  // Open WhatsApp to admin number with pre-filled message
+  let adminNum = adminSettings.adminPhone.replace(/\D/g, '');
+  if (adminNum.length === 10) adminNum = '91' + adminNum;
+  const waUrl = `https://wa.me/${adminNum}?text=${encodeURIComponent(msg)}`;
+
+  // Also try to use Web Share API if available — it can actually attach the image
+  // directly alongside the text, which is much nicer than asking the user to attach.
+  const shareData = {
+    title: 'Vyasaraghatta — Photo order',
+    text: msg,
+    files: [photoOrderFile],
+  };
+  const canShareFile = navigator.share && navigator.canShare && navigator.canShare(shareData);
+
+  if (canShareFile) {
+    // Native share with image attached — cleanest flow.
+    navigator.share(shareData)
+      .then(() => {
+        afterPhotoOrderSent(orderId);
+      })
+      .catch((err) => {
+        if (err.name === 'AbortError') return;
+        // Fallback to WhatsApp-only if share fails
+        openWhatsAppDirect(waUrl, orderId);
+      });
+  } else {
+    // Fallback: open WhatsApp with text, user attaches photo manually
+    openWhatsAppDirect(waUrl, orderId);
+  }
+}
+
+function openWhatsAppDirect(url, orderId) {
+  const a = document.createElement('a');
+  a.href = url; a.target = '_blank'; a.rel = 'noopener';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  // Give customer a reminder to attach the photo
+  setTimeout(() => {
+    alert('✉️ WhatsApp opened.\n\nPlease:\n1. Send the text message first\n2. Then tap 📎 (paperclip) and attach your photo');
+    afterPhotoOrderSent(orderId);
+  }, 600);
+}
+
+function afterPhotoOrderSent(orderId) {
+  // Clear the state
+  photoOrderFile = null;
+  clearVoiceRecording();
+  // Show confirmation screen
+  setTimeout(() => {
+    alert(`✓ Photo order ${orderId} sent to admin.\n\nThe admin will reply on WhatsApp within ~10 minutes to confirm price and delivery time.\n\nYou can track this in 📋 Orders.`);
+    show('view-browse');
+  }, 300);
+}
+
+/* ---- History: photo orders live alongside regular orders ---- */
+
+function savePhotoOrderToHistory(entry) {
+  try {
+    const list = loadCustomerHistory();
+    // Mark photo orders distinctly so the history UI can render them
+    list.unshift({
+      id: entry.id,
+      date: entry.date,
+      photoOrder: true,
+      name: entry.name,
+      phone: entry.phone,
+      address: entry.addr,
+      note: entry.note,
+      budget: entry.budget,
+      urgency: entry.urgency,
+      payment: entry.payment,
+      transcript: entry.transcript,
+      shops: [], subtotal: 0, delivery: 0, total: 0,
+    });
+    persistCustomerHistory(list);
+  } catch (e) { console.warn('Save photo order failed:', e); }
+}
+
+/* =====================================================================
+   ADMIN SETTINGS PANEL
+   Shop admin → ⚙️ — set WhatsApp number that receives photo orders.
+   ===================================================================== */
+
+function openAdminSettings() {
+  adminSettings = loadAdminSettings();
+  const html = `
+    <div class="modal-backdrop show" id="adminSettingsModal" onclick="if(event.target===this)closeAdminSettings()">
+      <div class="modal">
+        <h3>⚙️ Admin settings</h3>
+        <p style="font-size: 13px; color: var(--ink-soft); line-height: 1.5; margin-bottom: 14px;">
+          These settings are <strong>local to this device</strong>. They're used for the "Order by photo" feature so customers can reach you.
+        </p>
+        <div class="profile-field">
+          <span class="lbl">Your WhatsApp number</span>
+          <input id="asAdminPhone" type="tel" inputmode="numeric" placeholder="10-digit (India) or with country code" value="${escapeHtml(adminSettings.adminPhone || '')}" />
+          <div style="font-size: 11px; color: var(--ink-soft); margin-top: 4px;">
+            Example: 9876543210 — we'll add +91 automatically.
+          </div>
+        </div>
+        <div class="profile-field">
+          <span class="lbl">Your name (shown to customers)</span>
+          <input id="asAdminName" type="text" placeholder="e.g. Sunil" value="${escapeHtml(adminSettings.adminName || '')}" />
+        </div>
+        <button class="primary" onclick="saveAdminSettingsForm()" style="margin-top: 10px;">Save</button>
+        <button class="secondary" onclick="closeAdminSettings()" style="margin-top: 8px;">Cancel</button>
+      </div>
+    </div>
+  `;
+  const div = document.createElement('div');
+  div.innerHTML = html;
+  document.body.appendChild(div.firstElementChild);
+}
+
+function closeAdminSettings() {
+  const m = document.getElementById('adminSettingsModal');
+  if (m) m.remove();
+}
+
+function saveAdminSettingsForm() {
+  const phone = (document.getElementById('asAdminPhone').value || '').trim().replace(/\D/g, '');
+  const name = (document.getElementById('asAdminName').value || '').trim();
+  if (phone && phone.length < 10) {
+    alert('Phone number looks too short. Please enter at least 10 digits.');
+    return;
+  }
+  adminSettings = { adminPhone: phone, adminName: name };
+  saveAdminSettings(adminSettings);
+  closeAdminSettings();
+  alert('✓ Admin settings saved.');
+}

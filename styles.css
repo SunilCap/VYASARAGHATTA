@@ -1365,3 +1365,89 @@ main {
   color: var(--ink-soft);
   margin-top: 1px;
 }
+
+/* ====================================================================
+   PHOTO-ORDER CTA (big button on home)
+   ==================================================================== */
+.photo-order-cta {
+  width: 100%;
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%);
+  color: white;
+  padding: 16px 18px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 8px 0 18px;
+  text-align: left;
+  box-shadow: 0 4px 14px -4px rgba(22,101,52,0.4);
+  position: relative;
+}
+.photo-order-cta:active {
+  transform: scale(0.995);
+  box-shadow: 0 2px 8px -2px rgba(22,101,52,0.4);
+}
+.photo-order-ico {
+  font-size: 32px;
+  flex-shrink: 0;
+  width: 48px;
+  height: 48px;
+  background: rgba(255,255,255,0.2);
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+}
+.photo-order-text { flex: 1; min-width: 0; }
+.photo-order-title {
+  font-family: 'Fraunces', Georgia, serif;
+  font-weight: 700;
+  font-size: 18px;
+  margin-bottom: 2px;
+}
+.photo-order-sub {
+  font-size: 12px;
+  opacity: 0.9;
+  line-height: 1.35;
+}
+.photo-order-arrow {
+  font-size: 22px;
+  opacity: 0.8;
+  margin-right: 2px;
+}
+
+/* Photo preview box on photo-order form */
+.photo-preview-box {
+  min-height: 80px;
+  padding: 14px;
+  border: 1.5px dashed var(--rule);
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  background: var(--paper-2);
+  margin-top: 8px;
+}
+.photo-preview-box img {
+  display: block;
+  width: 100%;
+  max-height: 220px;
+  object-fit: contain;
+  border-radius: 8px;
+  background: white;
+}
+.photo-preview-meta {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--ink-soft);
+  width: 100%;
+}
+
+/* Photo orders look slightly different in history */
+.order-history-card.photo-order-card {
+  border-left: 3px solid var(--accent);
+}
+.order-history-card.photo-order-card .order-history-id {
+  color: var(--accent-2);
+}

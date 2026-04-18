@@ -92,6 +92,16 @@
     <!-- OCR status -->
     <div id="ocrStatus" class="ocr-status" style="display:none;"></div>
 
+    <!-- Big "Order by photo" CTA (sends to admin) -->
+    <button class="photo-order-cta" onclick="openPhotoOrder()">
+      <div class="photo-order-ico">📸</div>
+      <div class="photo-order-text">
+        <div class="photo-order-title">Order by photo</div>
+        <div class="photo-order-sub">Send us a picture of your list — we'll handle everything</div>
+      </div>
+      <div class="photo-order-arrow">→</div>
+    </button>
+
     <!-- Global search results (hidden when empty) -->
     <div id="searchResults" class="search-results-panel" style="display:none;"></div>
 
@@ -194,6 +204,103 @@
 
   <!-- Shop confirmation page — loaded when a shopkeeper taps the confirm link -->
   <section id="view-confirm-shop" class="view"></section>
+
+  <!-- Photo-order flow: customer sends image + details to admin -->
+  <section id="view-photo-order" class="view">
+    <button class="back" onclick="show('view-browse')">← Back</button>
+    <h2 style="font-size: 24px; margin-bottom: 6px;">Order by photo</h2>
+    <p style="color: var(--ink-soft); font-size: 14px; margin: 0 0 14px;">
+      Can't find what you need in the shops? Just send us a picture of your list or the product, and we'll handle it for you.
+    </p>
+
+    <!-- Photo preview -->
+    <div class="panel">
+      <div class="voice-label">Photo of your list / item <span style="color: var(--accent-2);">*</span></div>
+      <div class="voice-sub">Take a clear photo so we can read it. Prescriptions, handwritten lists, product labels — anything works.</div>
+      <div id="photoOrderPreview" class="photo-preview-box">
+        <div style="color: var(--ink-soft); font-size: 13px;">No photo selected yet</div>
+      </div>
+      <button class="voice-btn record" onclick="document.getElementById('photoOrderFile').click()" style="margin-top: 10px;">
+        📷 Take / choose photo
+      </button>
+      <input id="photoOrderFile" type="file" accept="image/*" capture="environment" style="display:none;" onchange="onPhotoOrderFileChosen(this.files[0])" />
+    </div>
+
+    <!-- Text note -->
+    <div class="panel">
+      <div class="field" style="margin-bottom: 0;">
+        <span class="lbl">Note (optional)</span>
+        <textarea id="poNote" rows="3" placeholder="Anything we should know? e.g. 'urgent', 'replace if unavailable', 'mother's medicines'" style="width:100%; padding:10px 12px; border:1px solid var(--rule); border-radius:10px; background:var(--paper); font-family:inherit; resize:vertical;"></textarea>
+      </div>
+    </div>
+
+    <!-- Voice note (reuses the same system as checkout) -->
+    <div class="panel" id="poVoiceBox">
+      <div class="voice-label">Voice note (optional)</div>
+      <div class="voice-sub">Speak in any language.</div>
+      <button class="voice-btn record" onclick="startVoiceRecording()">🎙️ Start recording</button>
+    </div>
+
+    <!-- Budget -->
+    <div class="panel">
+      <div class="field" style="margin-bottom: 0;">
+        <span class="lbl">Rough budget (optional)</span>
+        <select id="poBudget">
+          <option value="">No limit / I'll decide after confirmation</option>
+          <option value="under ₹100">Under ₹100</option>
+          <option value="₹100–250">₹100 – 250</option>
+          <option value="₹250–500">₹250 – 500</option>
+          <option value="₹500–1000">₹500 – 1,000</option>
+          <option value="₹1000+">More than ₹1,000</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Customer details -->
+    <div class="panel">
+      <div class="field">
+        <span class="lbl">Your name <span style="color: var(--accent-2);">*</span></span>
+        <input id="poName" type="text" placeholder="e.g. Ravi Kumar" />
+      </div>
+      <div class="field">
+        <span class="lbl">Phone number <span style="color: var(--accent-2);">*</span></span>
+        <input id="poPhone" type="tel" inputmode="numeric" placeholder="10-digit mobile" />
+      </div>
+      <div class="field">
+        <span class="lbl">Delivery address <span style="color: var(--accent-2);">*</span></span>
+        <div class="addr-row">
+          <input id="poAddr" type="text" placeholder="House no., street, landmark" />
+          <button type="button" class="gps-btn" onclick="useMyLocationForPhotoOrder()" aria-label="Use my current location">
+            <span id="poGpsIcon">📍</span> <span id="poGpsLabel">GPS</span>
+          </button>
+        </div>
+        <div id="poGpsStatus" class="gps-status"></div>
+      </div>
+      <div class="field">
+        <span class="lbl">How urgent?</span>
+        <select id="poUrgency">
+          <option value="now">Now — as fast as possible</option>
+          <option value="today" selected>Today</option>
+          <option value="whenever">No rush — whenever convenient</option>
+        </select>
+      </div>
+      <div class="field" style="margin-bottom: 0;">
+        <span class="lbl">Payment preference</span>
+        <select id="poPayment">
+          <option value="Cash">Cash on delivery</option>
+          <option value="UPI">UPI on delivery</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="poAdminWarning" class="ocr-status err" style="display:none;"></div>
+
+    <button class="primary" onclick="sendPhotoOrder()">📱 Send to admin on WhatsApp</button>
+    <p style="font-size: 12px; color: var(--ink-soft); text-align: center; margin: 14px 2px 0; line-height: 1.5;">
+      You'll attach the photo in WhatsApp yourself after tapping the button.<br/>
+      Admin will reply within ~10 minutes with price &amp; delivery time.
+    </p>
+  </section>
 
   <section id="view-track" class="view">
     <div class="track-hero">

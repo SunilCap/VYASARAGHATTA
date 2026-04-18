@@ -7,6 +7,39 @@ and this project follows [Semantic Versioning](https://semver.org/) once it reac
 
 ---
 
+## [0.9.0] — 2026-04-18
+
+### Added
+- **"Order by photo" on home screen.** Big green gradient button at
+  the top. Taps into a new flow:
+  - Photo (required) via camera or gallery
+  - Text note (optional)
+  - Voice note (optional, reuses existing recorder)
+  - Rough budget (optional: under ₹100 / ₹100–250 / ... / ₹1000+)
+  - Name, phone, address (required)
+  - Urgency (now / today / whenever)
+  - Payment preference
+- The message is sent via **navigator.share with the image attached**
+  on phones that support it (modern Android Chrome, iOS 16+). On older
+  devices, WhatsApp opens with the text pre-filled and the user is
+  prompted to attach the photo manually.
+- GPS button works on this flow too.
+- **Photo orders appear in customer order history** with a distinct
+  green-bordered card, showing urgency, budget, payment preference,
+  note, and transcript. No item list (admin will confirm items later).
+- **Admin settings panel** in Shop mode — set your WhatsApp number
+  (stored locally on this device) so photo orders reach you.
+  Required for the feature to work.
+
+### Notes
+- Admin WhatsApp number is stored in localStorage — not committed to
+  the repo. Each device running the app needs to set it once. (For
+  real production you'd want this in a config file or backend.)
+- This is the "Wizard of Oz" option — human-in-the-loop. Use it to
+  validate demand before building catalogue coverage for everything.
+
+---
+
 ## [0.8.0] — 2026-04-18
 
 ### Added
