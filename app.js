@@ -261,10 +261,24 @@ document.getElementById('catGrid').addEventListener('click', e => {
   renderShops();
 });
 
-document.getElementById('searchInput').addEventListener('input', e => {
-  searchQ = e.target.value.trim().toLowerCase();
-  renderShops();
-});
+const __homeSearchEl = document.getElementById('homeSearch');
+if (__homeSearchEl) {
+  __homeSearchEl.addEventListener('input', e => {
+    const q = e.target.value.trim();
+    searchQ = q.toLowerCase();
+    // When searching, show results panel; when empty, show the normal browse
+    const browse = document.getElementById('browseContent');
+    if (q) {
+      if (browse) browse.style.display = 'none';
+      renderSearchResults(q);
+    } else {
+      if (browse) browse.style.display = '';
+      const panel = document.getElementById('searchResults');
+      if (panel) panel.style.display = 'none';
+      renderShops();
+    }
+  });
+}
 
 function openShop(id) {
   currentShop = shops.find(s => s.id === id);
@@ -798,8 +812,28 @@ function toggleStock(id) {
    ===================================================================== */
 
 // Single source of truth — bump this on every release (also bump CACHE_VERSION in sw.js)
-const APP_VERSION = '0.4.2';
+const APP_VERSION = '0.6.0';
 const RELEASE_NOTES = [
+  {
+    version: '0.6.0',
+    date: '18 Apr 2026',
+    notes: [
+      'Customer order history — review past orders, expand to see items, and tap "Reorder" to add everything to cart again.',
+      'Voice note format fixed — now records in M4A (WhatsApp-compatible) on supported phones, with clear save+forward fallback if WebM is the only option.',
+      'Global search on Home — type to search across all shops and items, live as you type.',
+      'OCR camera button — tap 📷, upload a photo of your shopping list, and the app reads the text to suggest items to add.',
+    ],
+  },
+  {
+    version: '0.5.0',
+    date: '18 Apr 2026',
+    notes: [
+      'GPS location button at checkout — auto-fills delivery address from your current location.',
+      'Delivery address now includes a Google Maps link in WhatsApp messages.',
+      'Rider section expanded: Earnings (today/week/month with 7-day bar chart), Order history with ratings, Payout history, and full editable Profile with vehicle + bank/UPI details.',
+      'Rider profile persists on the device across sessions.',
+    ],
+  },
   {
     version: '0.4.2',
     date: '18 Apr 2026',
@@ -1266,6 +1300,7 @@ function deleteItem(id) {
 let mediaRecorder = null;
 let audioChunks = [];
 let audioBlob = null;
+let audioMime = '';
 let audioUrl = null;
 let recognition = null;
 let voiceTranscript = '';
@@ -1298,15 +1333,18 @@ async function startVoiceRecording() {
     audioChunks = [];
     voiceTranscript = '';
 
-    // Pick a MIME type the browser actually supports.
-    // iOS Safari supports audio/mp4; Chrome/Android supports audio/webm.
+    // Pick a MIME type the browser supports AND WhatsApp accepts.
+    // WhatsApp accepts: mp3, m4a/mp4, ogg, aac — NOT webm.
+    // Try widely-compatible formats first; webm is last-resort only.
     const candidates = [
-      'audio/webm;codecs=opus',
-      'audio/webm',
+      'audio/mp4;codecs=mp4a.40.2',   // AAC in MP4 — works on iOS Safari + modern Chrome
       'audio/mp4',
-      'audio/mpeg',
-      'audio/ogg;codecs=opus',
-      ''  // let the browser pick
+      'audio/aac',
+      'audio/mpeg',                   // MP3 — rare but safe if supported
+      'audio/ogg;codecs=opus',        // OGG — accepted by WhatsApp
+      'audio/webm;codecs=opus',       // WebM — NOT accepted by WhatsApp, last resort
+      'audio/webm',
+      ''                              // let the browser pick
     ];
     let chosenMime = '';
     for (const m of candidates) {
@@ -1315,6 +1353,7 @@ async function startVoiceRecording() {
         break;
       }
     }
+    console.log('[Voice] Recording as:', chosenMime || '(browser default)');
     mediaRecorder = chosenMime
       ? new MediaRecorder(stream, { mimeType: chosenMime })
       : new MediaRecorder(stream);
@@ -1324,8 +1363,9 @@ async function startVoiceRecording() {
     });
 
     mediaRecorder.addEventListener('stop', () => {
-      const useMime = chosenMime || 'audio/webm';
+      const useMime = chosenMime || (MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : 'audio/webm');
       audioBlob = new Blob(audioChunks, { type: useMime });
+      audioMime = useMime;
       if (audioUrl) URL.revokeObjectURL(audioUrl);
       audioUrl = URL.createObjectURL(audioBlob);
       stream.getTracks().forEach(t => t.stop());
@@ -1473,6 +1513,10 @@ function buildOrderMessage() {
   msg += `_Delivery: ₹${delivery}_\n`;
   msg += `*Total: ₹${total}*\n\n`;
   msg += `📍 Deliver to: ${addr}\n`;
+  if (window.__lastGpsCoords) {
+    const c = window.__lastGpsCoords;
+    msg += `📡 Map: https://maps.google.com/?q=${c.lat},${c.lng} (±${c.accuracy}m)\n`;
+  }
   msg += `📞 Contact: ${phone}\n`;
   if (voiceTranscript) {
     msg += `\n🎙️ *Voice note transcript:*\n"${voiceTranscript}"\n`;
@@ -1513,15 +1557,33 @@ function sendViaWhatsApp() {
   }, 1500);
 }
 
+// Helper: pick the best file extension from the mime type
+function audioExtFromMime(mime) {
+  if (!mime) return 'm4a';
+  if (mime.includes('mp4') || mime.includes('aac')) return 'm4a';
+  if (mime.includes('mpeg')) return 'mp3';
+  if (mime.includes('ogg')) return 'ogg';
+  if (mime.includes('webm')) return 'webm';
+  return 'audio';
+}
+
+// Detect whether current recording is in a format WhatsApp will accept.
+function isWhatsAppFriendly(mime) {
+  if (!mime) return false;
+  return mime.includes('mp4') || mime.includes('aac') ||
+         mime.includes('mpeg') || mime.includes('ogg');
+}
+
 async function sendViaShareSheet() {
   if (Object.keys(cart).length === 0) { alert('Your basket is empty.'); return; }
   const msg = buildOrderMessage();
   if (navigator.share) {
     try {
       const shareData = { title: 'Vyasaraghatta order', text: msg };
-      // Try to attach audio file if the browser supports it
-      if (audioBlob && navigator.canShare) {
-        const file = new File([audioBlob], 'voice-note.webm', { type: 'audio/webm' });
+      // Try to attach audio file only if format is friendly to messaging apps
+      if (audioBlob && isWhatsAppFriendly(audioMime) && navigator.canShare) {
+        const ext = audioExtFromMime(audioMime);
+        const file = new File([audioBlob], `voice-note.${ext}`, { type: audioMime });
         if (navigator.canShare({ files: [file] })) {
           shareData.files = [file];
         }
@@ -1544,14 +1606,24 @@ async function sendViaShareSheet() {
 }
 
 function afterOrderSent() {
-  // Offer to download audio if present (so user can forward it manually)
+  // Save the order to customer history BEFORE clearing
+  saveOrderToHistory();
+
+  // If we have a voice note, offer to save + forward manually
   if (audioBlob) {
-    const confirmed = confirm('Order text has been sent. Would you like to save your voice note to forward separately?');
+    const friendly = isWhatsAppFriendly(audioMime);
+    const msg = friendly
+      ? 'Order sent! Would you like to save your voice note so you can attach it to the WhatsApp chat?'
+      : '⚠️ Your phone recorded the voice note in WebM format, which WhatsApp does not accept as a voice file.\n\nWe\'ll save the file — you can attach it to WhatsApp manually as a document (long-press the 📎 attachment → Document). The transcript is already in the text message.';
+    const confirmed = confirm(msg);
     if (confirmed) {
+      const ext = audioExtFromMime(audioMime);
       const a = document.createElement('a');
       a.href = audioUrl;
-      a.download = `voice-order-${Date.now()}.webm`;
+      a.download = `voice-order-${Date.now()}.${ext}`;
+      document.body.appendChild(a);
       a.click();
+      document.body.removeChild(a);
     }
   }
   cart = {};
@@ -1559,4 +1631,827 @@ function afterOrderSent() {
   updateCartBar();
   show('view-browse');
   setTimeout(() => alert('Order shared! The shop or your contact will confirm.'), 300);
+}
+
+/* =====================================================================
+   GPS / CURRENT LOCATION for customer checkout
+   Uses browser geolocation + free Nominatim reverse-geocode
+   ===================================================================== */
+
+function useMyLocation() {
+  const icon = document.getElementById('gpsIcon');
+  const label = document.getElementById('gpsLabel');
+  const status = document.getElementById('gpsStatus');
+  const addrInput = document.getElementById('addr');
+  if (!navigator.geolocation) {
+    status.textContent = '⚠️ Location not supported on this browser';
+    status.className = 'gps-status err';
+    return;
+  }
+  icon.textContent = '⏳';
+  label.textContent = 'Finding…';
+  status.textContent = 'Please allow location access when prompted.';
+  status.className = 'gps-status';
+
+  navigator.geolocation.getCurrentPosition(
+    async (pos) => {
+      const { latitude, longitude, accuracy } = pos.coords;
+      status.textContent = `📡 Got location (±${Math.round(accuracy)}m). Looking up address…`;
+      try {
+        const res = await fetch(
+          `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=18&addressdetails=1`,
+          { headers: { 'Accept-Language': 'en' } }
+        );
+        if (!res.ok) throw new Error('Lookup failed');
+        const data = await res.json();
+        // Build a short human-friendly address
+        const a = data.address || {};
+        const parts = [
+          a.house_number, a.road, a.neighbourhood || a.suburb,
+          a.village || a.town || a.city, a.state
+        ].filter(Boolean);
+        const addr = parts.join(', ') || data.display_name || `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
+        addrInput.value = addr;
+        status.innerHTML = `✓ Location set. <a href="https://www.openstreetmap.org/?mlat=${latitude}&mlon=${longitude}&zoom=18" target="_blank" rel="noopener" style="color: var(--accent); text-decoration: underline;">View on map</a>`;
+        status.className = 'gps-status ok';
+        // Stash coords for the WhatsApp message
+        window.__lastGpsCoords = { lat: latitude, lng: longitude, accuracy: Math.round(accuracy) };
+      } catch (e) {
+        // Fallback: just use coords
+        addrInput.value = `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
+        status.textContent = `✓ Location set (${Math.round(accuracy)}m accuracy). Could not resolve to address — coords filled instead.`;
+        status.className = 'gps-status ok';
+        window.__lastGpsCoords = { lat: latitude, lng: longitude, accuracy: Math.round(accuracy) };
+      }
+      icon.textContent = '📍';
+      label.textContent = 'GPS';
+    },
+    (err) => {
+      const msg =
+        err.code === 1 ? 'Permission denied. Enable location in Settings → Safari → Location.' :
+        err.code === 2 ? 'Position unavailable. Try outside or near a window.' :
+        err.code === 3 ? 'Request timed out. Try again.' :
+        'Could not get location.';
+      status.textContent = '✗ ' + msg;
+      status.className = 'gps-status err';
+      icon.textContent = '📍';
+      label.textContent = 'GPS';
+    },
+    { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 }
+  );
+}
+
+/* =====================================================================
+   RIDER — Tabs (Orders / Earnings / History / Profile)
+   ===================================================================== */
+
+let currentRiderTab = 'orders';
+
+const RIDER_PROFILE_KEY = 'vyasaraghatta.rider.profile.v1';
+const RIDER_HISTORY_KEY = 'vyasaraghatta.rider.history.v1';
+const RIDER_PAYOUT_KEY  = 'vyasaraghatta.rider.payouts.v1';
+
+function loadRiderProfile() {
+  try {
+    const raw = localStorage.getItem(RIDER_PROFILE_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch (e) {}
+  return {
+    name: 'Ravi Kumar',
+    phone: '9876543210',
+    village: 'Vyasaraghatta',
+    vehicle: 'Bike',
+    vehicleNumber: 'KA 01 AB 1234',
+    aadhaar: '',
+    licence: '',
+    bankName: '',
+    accountNumber: '',
+    ifsc: '',
+    upiId: '',
+    joinedDate: 'Jan 2026',
+  };
+}
+
+function saveRiderProfile(p) {
+  try { localStorage.setItem(RIDER_PROFILE_KEY, JSON.stringify(p)); } catch (e) {}
+}
+
+function loadRiderHistory() {
+  try {
+    const raw = localStorage.getItem(RIDER_HISTORY_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch (e) {}
+  // Seeded demo history
+  const now = Date.now();
+  return [
+    { id: 'VG2041', date: now - 2*3600*1000,  shops: ['Gowda Kirana'], earnings: 45, rating: 5, distance: '2.1 km' },
+    { id: 'VG2038', date: now - 5*3600*1000,  shops: ["Nisha Cakes"], earnings: 60, rating: 5, distance: '3.0 km' },
+    { id: 'VG2034', date: now - 8*3600*1000,  shops: ['Shanti Bakery', 'Village Dairy'], earnings: 95, rating: 4, distance: '4.2 km' },
+    { id: 'VG2029', date: now - 26*3600*1000, shops: ['Sri Lakshmi Tiffin'], earnings: 40, rating: 5, distance: '1.8 km' },
+    { id: 'VG2024', date: now - 28*3600*1000, shops: ['Raghavendra Medicals'], earnings: 55, rating: 5, distance: '2.5 km' },
+    { id: 'VG2018', date: now - 3*86400*1000, shops: ['Fresh Meat & Fish'], earnings: 70, rating: 4, distance: '2.8 km' },
+    { id: 'VG2015', date: now - 3*86400*1000, shops: ['Gowda Kirana', "Nisha Cakes"], earnings: 110, rating: 5, distance: '5.1 km' },
+    { id: 'VG2009', date: now - 5*86400*1000, shops: ['Village Dairy'], earnings: 35, rating: 5, distance: '1.2 km' },
+    { id: 'VG2003', date: now - 8*86400*1000, shops: ['Shanti Bakery'], earnings: 50, rating: 3, distance: '2.3 km' },
+    { id: 'VG1998', date: now - 12*86400*1000, shops: ['Basavaraj Stationers'], earnings: 45, rating: 5, distance: '2.0 km' },
+    { id: 'VG1992', date: now - 15*86400*1000, shops: ['Sri Lakshmi Tiffin', 'Madhu Sweets'], earnings: 90, rating: 4, distance: '4.5 km' },
+    { id: 'VG1987', date: now - 18*86400*1000, shops: ['Raghavendra Medicals'], earnings: 55, rating: 5, distance: '2.7 km' },
+  ];
+}
+
+function loadRiderPayouts() {
+  try {
+    const raw = localStorage.getItem(RIDER_PAYOUT_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch (e) {}
+  const now = Date.now();
+  return [
+    { id: 'PAY-2026-W14', period: 'Apr 7–13, 2026',  amount: 1840, deliveries: 32, status: 'paid',    paidOn: now - 3*86400*1000, method: 'UPI' },
+    { id: 'PAY-2026-W13', period: 'Mar 31–Apr 6',    amount: 2105, deliveries: 38, status: 'paid',    paidOn: now - 10*86400*1000, method: 'UPI' },
+    { id: 'PAY-2026-W12', period: 'Mar 24–30, 2026', amount: 1925, deliveries: 34, status: 'paid',    paidOn: now - 17*86400*1000, method: 'Bank' },
+    { id: 'PAY-2026-W15', period: 'Apr 14–20, 2026', amount:  555, deliveries: 10, status: 'pending', paidOn: null, method: 'UPI' },
+  ];
+}
+
+let riderProfile = loadRiderProfile();
+let riderHistory = loadRiderHistory();
+let riderPayouts = loadRiderPayouts();
+
+function riderTab(tab) {
+  currentRiderTab = tab;
+  document.querySelectorAll('#navRider button').forEach((b, i) => {
+    const tabs = ['orders','earnings','history','profile'];
+    b.classList.toggle('active', tabs[i] === tab);
+  });
+  const titles = {
+    orders: 'Incoming orders',
+    earnings: 'Earnings',
+    history: 'Past deliveries',
+    profile: 'Profile & documents'
+  };
+  document.getElementById('rSectionTitle').textContent = titles[tab];
+
+  if (tab === 'orders')   renderRiderView();
+  if (tab === 'earnings') renderRiderEarnings();
+  if (tab === 'history')  renderRiderHistory();
+  if (tab === 'profile')  renderRiderProfile();
+}
+
+/* ---------- Earnings ---------- */
+
+function sumRange(days) {
+  const cutoff = Date.now() - days * 86400 * 1000;
+  return riderHistory
+    .filter(o => o.date >= cutoff)
+    .reduce((a, o) => a + o.earnings, 0);
+}
+
+function countRange(days) {
+  const cutoff = Date.now() - days * 86400 * 1000;
+  return riderHistory.filter(o => o.date >= cutoff).length;
+}
+
+function renderRiderEarnings() {
+  const box = document.getElementById('riderContent');
+  const today = sumRange(1);
+  const week = sumRange(7);
+  const month = sumRange(30);
+  const todayCount = countRange(1);
+  const weekCount = countRange(7);
+  const monthCount = countRange(30);
+
+  // Group last 7 days for bar chart
+  const days = [];
+  for (let d = 6; d >= 0; d--) {
+    const start = new Date();
+    start.setHours(0,0,0,0);
+    start.setDate(start.getDate() - d);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 1);
+    const total = riderHistory
+      .filter(o => o.date >= start.getTime() && o.date < end.getTime())
+      .reduce((a, o) => a + o.earnings, 0);
+    days.push({
+      label: start.toLocaleDateString('en-IN', { weekday: 'short' }),
+      value: total,
+    });
+  }
+  const max = Math.max(...days.map(d => d.value), 1);
+
+  const pending = riderPayouts.find(p => p.status === 'pending');
+  const paidTotal = riderPayouts.filter(p => p.status === 'paid').reduce((a,p) => a + p.amount, 0);
+
+  box.innerHTML = `
+    <div class="earn-cards">
+      <div class="earn-card">
+        <div class="earn-lbl">Today</div>
+        <div class="earn-val">₹${today}</div>
+        <div class="earn-sub">${todayCount} ${todayCount === 1 ? 'delivery' : 'deliveries'}</div>
+      </div>
+      <div class="earn-card">
+        <div class="earn-lbl">This week</div>
+        <div class="earn-val">₹${week}</div>
+        <div class="earn-sub">${weekCount} deliveries</div>
+      </div>
+      <div class="earn-card">
+        <div class="earn-lbl">This month</div>
+        <div class="earn-val">₹${month}</div>
+        <div class="earn-sub">${monthCount} deliveries</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Last 7 days</div>
+      <div class="bar-chart">
+        ${days.map(d => `
+          <div class="bar-col">
+            <div class="bar-val">₹${d.value}</div>
+            <div class="bar" style="height: ${Math.round((d.value / max) * 100)}%;"></div>
+            <div class="bar-label">${d.label}</div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Payouts</div>
+      ${pending ? `
+        <div class="payout-pending">
+          <div>
+            <div style="font-weight: 600; font-size: 15px;">₹${pending.amount} pending</div>
+            <div style="font-size: 12px; color: var(--ink-soft);">${pending.period} · ${pending.deliveries} deliveries</div>
+          </div>
+          <span class="status-pill new">Settling Mon</span>
+        </div>
+      ` : ''}
+      <div class="payout-summary">
+        Lifetime paid: <strong>₹${paidTotal.toLocaleString('en-IN')}</strong>
+      </div>
+      <button class="secondary" onclick="riderTab('history'); setTimeout(()=>document.getElementById('showPayouts').click(), 50);" style="margin-top: 8px;">View payout history →</button>
+    </div>
+
+    <div class="panel" style="background: var(--paper-2); border-style: dashed;">
+      <div style="font-size: 12px; color: var(--ink-soft);">
+        💡 <strong>Prototype note:</strong> Earnings shown are from simulated deliveries on this device. In the real app, these come from the payment backend.
+      </div>
+    </div>
+  `;
+}
+
+/* ---------- History (with toggle to payouts) ---------- */
+
+let historyView = 'orders';
+
+function renderRiderHistory() {
+  const box = document.getElementById('riderContent');
+  box.innerHTML = `
+    <div class="history-toggle">
+      <button id="showOrders" class="${historyView === 'orders' ? 'active' : ''}" onclick="setHistoryView('orders')">Orders</button>
+      <button id="showPayouts" class="${historyView === 'payouts' ? 'active' : ''}" onclick="setHistoryView('payouts')">Payouts</button>
+    </div>
+    <div id="historyBody"></div>
+  `;
+  renderHistoryBody();
+}
+
+function setHistoryView(v) {
+  historyView = v;
+  document.getElementById('showOrders').classList.toggle('active', v === 'orders');
+  document.getElementById('showPayouts').classList.toggle('active', v === 'payouts');
+  renderHistoryBody();
+}
+
+function renderHistoryBody() {
+  const body = document.getElementById('historyBody');
+  if (!body) return;
+  if (historyView === 'orders') {
+    if (!riderHistory.length) {
+      body.innerHTML = '<div class="empty"><div class="em">📦</div>No deliveries yet.</div>';
+      return;
+    }
+    body.innerHTML = riderHistory.map(o => `
+      <div class="history-item">
+        <div class="history-left">
+          <div class="history-id">${o.id}</div>
+          <div class="history-meta">${formatDateShort(o.date)} · ${o.distance} · ${o.shops.join(', ')}</div>
+          <div class="history-rating">${renderStars(o.rating)}</div>
+        </div>
+        <div class="history-right">
+          <div class="history-amount">₹${o.earnings}</div>
+        </div>
+      </div>
+    `).join('');
+  } else {
+    body.innerHTML = riderPayouts.map(p => `
+      <div class="history-item">
+        <div class="history-left">
+          <div class="history-id">${p.id}</div>
+          <div class="history-meta">${p.period} · ${p.deliveries} deliveries · ${p.method}</div>
+          <div class="history-meta" style="color: ${p.status === 'paid' ? 'var(--ok)' : 'var(--warn)'}; font-weight: 600;">
+            ${p.status === 'paid' ? '✓ Paid on ' + formatDateShort(p.paidOn) : '⏳ Pending — settles Monday'}
+          </div>
+        </div>
+        <div class="history-right">
+          <div class="history-amount">₹${p.amount.toLocaleString('en-IN')}</div>
+        </div>
+      </div>
+    `).join('');
+  }
+}
+
+function formatDateShort(ts) {
+  const d = new Date(ts);
+  const hours = Math.floor((Date.now() - ts) / 3600000);
+  if (hours < 1) return 'just now';
+  if (hours < 24) return hours + 'h ago';
+  const days = Math.floor(hours / 24);
+  if (days < 7) return days + 'd ago';
+  return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+}
+
+function renderStars(n) {
+  let s = '';
+  for (let i = 0; i < 5; i++) s += i < n ? '★' : '☆';
+  return `<span style="color: #f59e0b; font-size: 13px;">${s}</span>`;
+}
+
+/* ---------- Profile ---------- */
+
+function renderRiderProfile() {
+  const box = document.getElementById('riderContent');
+  const p = riderProfile;
+  box.innerHTML = `
+    <div class="panel">
+      <div class="panel-title">Personal</div>
+      <div class="profile-field"><span class="lbl">Full name</span>
+        <input id="pf_name" type="text" value="${escapeHtml(p.name)}" />
+      </div>
+      <div class="profile-field"><span class="lbl">Phone number</span>
+        <input id="pf_phone" type="tel" value="${escapeHtml(p.phone)}" />
+      </div>
+      <div class="profile-field"><span class="lbl">Village / Area</span>
+        <input id="pf_village" type="text" value="${escapeHtml(p.village)}" />
+      </div>
+      <div class="profile-field"><span class="lbl">Joined</span>
+        <input type="text" value="${escapeHtml(p.joinedDate)}" disabled />
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Vehicle</div>
+      <div class="profile-field"><span class="lbl">Vehicle type</span>
+        <select id="pf_vehicle">
+          <option ${p.vehicle==='Bike'?'selected':''}>Bike</option>
+          <option ${p.vehicle==='Scooter'?'selected':''}>Scooter</option>
+          <option ${p.vehicle==='Bicycle'?'selected':''}>Bicycle</option>
+          <option ${p.vehicle==='Auto'?'selected':''}>Auto</option>
+          <option ${p.vehicle==='Walker'?'selected':''}>Walker</option>
+        </select>
+      </div>
+      <div class="profile-field"><span class="lbl">Vehicle number</span>
+        <input id="pf_vehicleNumber" type="text" placeholder="e.g. KA 01 AB 1234" value="${escapeHtml(p.vehicleNumber)}" />
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Documents</div>
+      <div class="profile-field"><span class="lbl">Aadhaar number (last 4)</span>
+        <input id="pf_aadhaar" type="text" placeholder="XXXX" maxlength="4" value="${escapeHtml(p.aadhaar)}" />
+      </div>
+      <div class="profile-field"><span class="lbl">Driving licence number</span>
+        <input id="pf_licence" type="text" placeholder="e.g. KA01 20210001234" value="${escapeHtml(p.licence)}" />
+      </div>
+      <div class="doc-hint">In the real app, you'll upload photos of these documents for verification.</div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Payout details</div>
+      <div class="profile-field"><span class="lbl">UPI ID (preferred)</span>
+        <input id="pf_upiId" type="text" placeholder="yourname@upi" value="${escapeHtml(p.upiId)}" />
+      </div>
+      <div class="profile-field"><span class="lbl">Bank name</span>
+        <input id="pf_bankName" type="text" placeholder="e.g. Canara Bank" value="${escapeHtml(p.bankName)}" />
+      </div>
+      <div class="profile-field"><span class="lbl">Account number</span>
+        <input id="pf_accountNumber" type="text" placeholder="Account number" value="${escapeHtml(p.accountNumber)}" />
+      </div>
+      <div class="profile-field"><span class="lbl">IFSC code</span>
+        <input id="pf_ifsc" type="text" placeholder="e.g. CNRB0001234" value="${escapeHtml(p.ifsc)}" />
+      </div>
+    </div>
+
+    <button class="primary" onclick="saveRiderProfileFromForm()">Save profile</button>
+    <button class="secondary" style="margin-top: 8px;" onclick="riderTab('orders')">Cancel</button>
+  `;
+}
+
+function saveRiderProfileFromForm() {
+  const fields = ['name','phone','village','vehicle','vehicleNumber','aadhaar','licence','bankName','accountNumber','ifsc','upiId'];
+  fields.forEach(f => {
+    const el = document.getElementById('pf_' + f);
+    if (el) riderProfile[f] = el.value.trim();
+  });
+  saveRiderProfile(riderProfile);
+  // Also update the rider header name
+  const nameEl = document.querySelector('.rider-header .name');
+  const vilEl = document.querySelector('.rider-header .vil');
+  if (nameEl) nameEl.textContent = riderProfile.name;
+  if (vilEl) vilEl.textContent = 'From ' + riderProfile.village + ' · 4.8 ★';
+  alert('✓ Profile saved.');
+  riderTab('orders');
+}
+
+function escapeHtml(s) {
+  if (s == null) return '';
+  return String(s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+}
+
+/* =====================================================================
+   CUSTOMER ORDER HISTORY (device-local)
+   ===================================================================== */
+
+const CUSTOMER_HISTORY_KEY = 'vyasaraghatta.orders.v1';
+
+function loadCustomerHistory() {
+  try {
+    const raw = localStorage.getItem(CUSTOMER_HISTORY_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch (e) {}
+  return [];
+}
+
+function persistCustomerHistory(list) {
+  try { localStorage.setItem(CUSTOMER_HISTORY_KEY, JSON.stringify(list.slice(0, 50))); } catch (e) {}
+}
+
+// Called from afterOrderSent(): snapshot cart + details into history
+function saveOrderToHistory() {
+  try {
+    const groups = cartGroupedByShop();
+    const shopIds = Object.keys(groups);
+    if (!shopIds.length) return;
+    const { subtotal, delivery, total } = cartStats();
+    const entry = {
+      id: 'VG' + Math.floor(10000 + Math.random() * 90000),
+      date: Date.now(),
+      shops: shopIds.map(sid => {
+        const shop = shops.find(s => s.id === sid);
+        return {
+          name: shop.name,
+          emoji: shop.emoji,
+          items: groups[sid].map(l => ({ name: l.item.name, qty: l.qty, price: l.item.price, emoji: l.item.emoji })),
+        };
+      }),
+      subtotal, delivery, total,
+      address: (document.getElementById('addr') || {}).value || '',
+      phone: (document.getElementById('phone') || {}).value || '',
+      transcript: voiceTranscript || '',
+      gps: window.__lastGpsCoords || null,
+    };
+    const list = loadCustomerHistory();
+    list.unshift(entry);
+    persistCustomerHistory(list);
+  } catch (e) {
+    console.warn('Could not save order to history:', e);
+  }
+}
+
+function renderCustomerHistory() {
+  const view = document.getElementById('view-history');
+  if (!view) return;
+  const list = loadCustomerHistory();
+  if (!list.length) {
+    view.innerHTML = `
+      <button class="back" onclick="show('view-browse')">← Back</button>
+      <h2 style="font-size: 24px; margin-bottom: 14px;">Your orders</h2>
+      <div class="empty">
+        <div class="em">📋</div>
+        No orders yet.<br/>
+        Your past orders will appear here.
+      </div>
+    `;
+    return;
+  }
+  view.innerHTML = `
+    <button class="back" onclick="show('view-browse')">← Back</button>
+    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px;">
+      <h2 style="font-size: 24px; margin: 0;">Your orders</h2>
+      <button class="admin-btn" onclick="clearCustomerHistory()" title="Clear history">🗑️</button>
+    </div>
+    ${list.map(o => `
+      <div class="order-history-card" onclick="toggleOrderExpand('${o.id}')">
+        <div class="order-history-head">
+          <div>
+            <div class="order-history-id">${o.id}</div>
+            <div class="order-history-date">${formatDateShort(o.date)}</div>
+          </div>
+          <div class="order-history-total">₹${o.total}</div>
+        </div>
+        <div class="order-history-shops">
+          ${o.shops.map(s => `<span class="tag">${s.emoji} ${s.name}</span>`).join('')}
+        </div>
+        <div id="order-details-${o.id}" class="order-history-details" style="display: none;">
+          ${o.shops.map(s => `
+            <div style="margin-top: 10px;">
+              <div style="font-weight: 600; font-size: 14px; margin-bottom: 4px;">${s.emoji} ${s.name}</div>
+              ${s.items.map(it => `
+                <div class="order-history-line">
+                  <span>${it.qty}× ${it.name}</span>
+                  <span>₹${it.qty * it.price}</span>
+                </div>
+              `).join('')}
+            </div>
+          `).join('')}
+          <div class="order-history-totals">
+            <div class="order-history-line"><span>Subtotal</span><span>₹${o.subtotal}</span></div>
+            <div class="order-history-line"><span>Delivery</span><span>₹${o.delivery}</span></div>
+            <div class="order-history-line" style="font-weight: 700;"><span>Total</span><span>₹${o.total}</span></div>
+          </div>
+          <div class="order-history-footer">
+            <div style="font-size: 12px; color: var(--ink-soft);">📍 ${o.address || '(no address)'}</div>
+            ${o.transcript ? `<div style="font-size: 12px; color: var(--ink-soft); margin-top: 4px;">🎙️ "${o.transcript}"</div>` : ''}
+          </div>
+          <button class="primary" onclick="event.stopPropagation(); reorderFromHistory('${o.id}')" style="margin-top: 10px;">Reorder these items</button>
+        </div>
+      </div>
+    `).join('')}
+  `;
+}
+
+function toggleOrderExpand(id) {
+  const el = document.getElementById('order-details-' + id);
+  if (!el) return;
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+function reorderFromHistory(orderId) {
+  const order = loadCustomerHistory().find(o => o.id === orderId);
+  if (!order) return;
+  let addedCount = 0, missingCount = 0;
+  order.shops.forEach(s => {
+    const shop = shops.find(sh => sh.name === s.name);
+    if (!shop) { missingCount += s.items.length; return; }
+    s.items.forEach(it => {
+      const item = shop.items.find(i => i.name === it.name && i.stock !== false);
+      if (!item) { missingCount++; return; }
+      if (!cart[item.id]) cart[item.id] = { item, qty: 0, shopId: shop.id };
+      cart[item.id].qty += it.qty;
+      addedCount++;
+    });
+  });
+  updateCartBar();
+  if (addedCount === 0) {
+    alert('None of these items are currently available. The shop may have removed them.');
+  } else if (missingCount > 0) {
+    alert(`Added ${addedCount} item(s). ${missingCount} no longer available — removed from cart.`);
+    show('view-checkout');
+  } else {
+    show('view-checkout');
+  }
+}
+
+function clearCustomerHistory() {
+  if (!confirm('Clear all order history from this device? This cannot be undone.')) return;
+  localStorage.removeItem(CUSTOMER_HISTORY_KEY);
+  renderCustomerHistory();
+}
+
+/* =====================================================================
+   GLOBAL ITEM SEARCH — Home screen, live as you type
+   ===================================================================== */
+
+function searchItemsGlobal(query) {
+  const q = query.toLowerCase().trim();
+  if (!q) return [];
+  const results = [];
+  shops.forEach(shop => {
+    if (!shop.items) return;
+    shop.items.forEach(item => {
+      if (!item.stock) return; // skip sold-out
+      const hay = (item.name + ' ' + (item.desc || '')).toLowerCase();
+      // Split query into words, all must match (AND)
+      const words = q.split(/\s+/).filter(Boolean);
+      const matches = words.every(w => hay.includes(w));
+      if (matches) results.push({ item, shop });
+    });
+  });
+  return results.slice(0, 30); // cap for perf
+}
+
+function renderSearchResults(query) {
+  const panel = document.getElementById('searchResults');
+  if (!panel) return;
+  const q = query.trim();
+  if (!q) {
+    panel.style.display = 'none';
+    panel.innerHTML = '';
+    return;
+  }
+  const results = searchItemsGlobal(q);
+  panel.style.display = 'block';
+  if (!results.length) {
+    panel.innerHTML = `
+      <div class="search-results-header">Search results</div>
+      <div class="empty" style="padding: 24px;">
+        <div class="em">🔍</div>
+        Nothing matches "${escapeHtml(q)}".<br/>
+        Try different words or check the image upload option.
+      </div>
+    `;
+    return;
+  }
+  panel.innerHTML = `
+    <div class="search-results-header">${results.length} match${results.length === 1 ? '' : 'es'} across shops</div>
+    ${results.map(r => {
+      const inCart = cart[r.item.id]?.qty || 0;
+      const imageHTML = r.item.image
+        ? `<img src="${escapeHtml(r.item.image)}" alt="" onerror="this.parentElement.innerHTML='${r.item.emoji}';">`
+        : r.item.emoji;
+      return `
+        <div class="search-result">
+          <div class="item-emoji">${imageHTML}</div>
+          <div class="item-body">
+            <div class="item-name">${escapeHtml(r.item.name)}</div>
+            <div class="item-desc">From ${escapeHtml(r.shop.name)} ${r.shop.emoji}</div>
+            <div class="item-price">₹${r.item.price}</div>
+          </div>
+          <div>
+            ${inCart > 0 ?
+              `<div class="qty">
+                 <button onclick="changeQty('${r.item.id}', '${r.shop.id}', -1); renderSearchResults(document.getElementById('homeSearch').value);">−</button>
+                 <span>${inCart}</span>
+                 <button onclick="changeQty('${r.item.id}', '${r.shop.id}', 1); renderSearchResults(document.getElementById('homeSearch').value);">+</button>
+               </div>` :
+              `<button class="add-btn" onclick="changeQty('${r.item.id}', '${r.shop.id}', 1); renderSearchResults(document.getElementById('homeSearch').value);">Add</button>`
+            }
+          </div>
+        </div>
+      `;
+    }).join('')}
+  `;
+}
+
+/* =====================================================================
+   OCR — Image text recognition via Tesseract.js (lazy-loaded)
+   Reads printed/handwritten text from uploaded images, matches against
+   the shop catalogue, and shows matches as search results.
+   ===================================================================== */
+
+let tesseractPromise = null;
+
+function loadTesseract() {
+  if (tesseractPromise) return tesseractPromise;
+  tesseractPromise = new Promise((resolve, reject) => {
+    if (window.Tesseract) { resolve(window.Tesseract); return; }
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
+    s.onload = () => resolve(window.Tesseract);
+    s.onerror = () => reject(new Error('Could not load OCR engine. Check internet connection.'));
+    document.head.appendChild(s);
+  });
+  return tesseractPromise;
+}
+
+async function handleOcrUpload(file) {
+  if (!file) return;
+  const status = document.getElementById('ocrStatus');
+  const search = document.getElementById('homeSearch');
+  status.style.display = 'block';
+  status.className = 'ocr-status';
+  status.innerHTML = '⏳ Loading image recognition…';
+  try {
+    const Tesseract = await loadTesseract();
+    status.innerHTML = '📸 Reading text from image… (this may take a few seconds)';
+    const result = await Tesseract.recognize(file, 'eng', {
+      logger: (m) => {
+        if (m.status === 'recognizing text' && m.progress) {
+          status.innerHTML = `📸 Reading… ${Math.round(m.progress * 100)}%`;
+        }
+      },
+    });
+    const rawText = (result.data.text || '').trim();
+    if (!rawText) {
+      status.className = 'ocr-status err';
+      status.innerHTML = '⚠️ Couldn\'t find any text in the image. Try a clearer photo with printed text.';
+      return;
+    }
+
+    // Match extracted text against catalogue
+    const words = rawText.toLowerCase().split(/[^a-z\u0900-\u097f\u0C80-\u0CFF]+/).filter(w => w.length >= 3);
+    const matches = matchOcrToItems(words);
+    if (!matches.length) {
+      status.className = 'ocr-status err';
+      status.innerHTML = `
+        Found text but no matching items:<br/>
+        <em style="font-size: 12px;">"${escapeHtml(rawText.slice(0, 120))}${rawText.length > 120 ? '…' : ''}"</em><br/>
+        <button class="admin-btn" style="margin-top: 8px;" onclick="useOcrTextAsSearch('${escapeHtml(rawText).replace(/'/g,"\\'")}')">Search this text instead</button>
+      `;
+      return;
+    }
+
+    status.className = 'ocr-status ok';
+    status.innerHTML = `✓ Found ${matches.length} matching item${matches.length === 1 ? '' : 's'} — showing below.`;
+
+    // Put the extracted "best guess" query into the search box and show results
+    const guessedQuery = matches.slice(0, 3).map(m => m.item.name).join(' OR ');
+    // Show results directly without overwriting search input
+    const panel = document.getElementById('searchResults');
+    const browse = document.getElementById('browseContent');
+    if (browse) browse.style.display = 'none';
+    if (search) search.value = '';
+    renderOcrMatches(matches, rawText);
+  } catch (err) {
+    console.error('OCR failed:', err);
+    status.className = 'ocr-status err';
+    status.innerHTML = '✗ ' + (err.message || 'Could not read the image.');
+  }
+}
+
+function matchOcrToItems(words) {
+  const wordSet = new Set(words);
+  const scored = [];
+  shops.forEach(shop => {
+    if (!shop.items) return;
+    shop.items.forEach(item => {
+      if (!item.stock) return;
+      const itemWords = (item.name + ' ' + (item.desc || '')).toLowerCase().split(/\s+/);
+      const itemWordSet = new Set(itemWords.filter(w => w.length >= 3));
+      let score = 0;
+      itemWordSet.forEach(iw => {
+        if (wordSet.has(iw)) { score += 2; return; }
+        // Fuzzy-ish: substring match in either direction
+        for (const qw of wordSet) {
+          if (qw.length >= 4 && (iw.includes(qw) || qw.includes(iw))) { score += 1; break; }
+        }
+      });
+      if (score > 0) scored.push({ item, shop, score });
+    });
+  });
+  return scored
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 30);
+}
+
+function renderOcrMatches(matches, rawText) {
+  const panel = document.getElementById('searchResults');
+  if (!panel) return;
+  panel.style.display = 'block';
+  panel.innerHTML = `
+    <div class="search-results-header">📸 Matched from your photo</div>
+    <details style="margin-bottom: 10px;">
+      <summary style="font-size: 12px; color: var(--ink-soft); cursor: pointer;">View raw extracted text</summary>
+      <div style="font-size: 12px; color: var(--ink-soft); padding: 8px; background: var(--paper-2); border-radius: 6px; margin-top: 4px; max-height: 120px; overflow-y: auto;">${escapeHtml(rawText)}</div>
+    </details>
+    ${matches.map(r => {
+      const inCart = cart[r.item.id]?.qty || 0;
+      const imageHTML = r.item.image
+        ? `<img src="${escapeHtml(r.item.image)}" alt="" onerror="this.parentElement.innerHTML='${r.item.emoji}';">`
+        : r.item.emoji;
+      return `
+        <div class="search-result">
+          <div class="item-emoji">${imageHTML}</div>
+          <div class="item-body">
+            <div class="item-name">${escapeHtml(r.item.name)}</div>
+            <div class="item-desc">From ${escapeHtml(r.shop.name)} ${r.shop.emoji}</div>
+            <div class="item-price">₹${r.item.price}</div>
+          </div>
+          <div>
+            ${inCart > 0 ?
+              `<div class="qty">
+                 <button onclick="changeQty('${r.item.id}', '${r.shop.id}', -1); renderOcrMatches(${JSON.stringify(matches).replace(/"/g,'&quot;')}, ${JSON.stringify(rawText).replace(/"/g,'&quot;')})">−</button>
+                 <span>${inCart}</span>
+                 <button onclick="changeQty('${r.item.id}', '${r.shop.id}', 1);">+</button>
+               </div>` :
+              `<button class="add-btn" onclick="changeQty('${r.item.id}', '${r.shop.id}', 1); this.outerHTML='<div class=\\'qty\\'><button onclick=\\'changeQty(&quot;${r.item.id}&quot;, &quot;${r.shop.id}&quot;, -1); updateCartBar();\\'>−</button><span>1</span><button onclick=\\'changeQty(&quot;${r.item.id}&quot;, &quot;${r.shop.id}&quot;, 1); updateCartBar();\\'>+</button></div>';">Add</button>`
+            }
+          </div>
+        </div>
+      `;
+    }).join('')}
+    <button class="secondary" onclick="clearOcr()" style="margin-top: 10px;">Done — back to browse</button>
+  `;
+}
+
+function useOcrTextAsSearch(txt) {
+  const search = document.getElementById('homeSearch');
+  if (search) {
+    search.value = txt.slice(0, 50);
+    search.dispatchEvent(new Event('input'));
+  }
+}
+
+function clearOcr() {
+  const panel = document.getElementById('searchResults');
+  const status = document.getElementById('ocrStatus');
+  const browse = document.getElementById('browseContent');
+  const search = document.getElementById('homeSearch');
+  if (panel) { panel.style.display = 'none'; panel.innerHTML = ''; }
+  if (status) { status.style.display = 'none'; status.innerHTML = ''; }
+  if (browse) browse.style.display = '';
+  if (search) search.value = '';
+  // reset the file input so same file can be re-uploaded
+  const file = document.getElementById('ocrFileInput');
+  if (file) file.value = '';
 }

@@ -2,7 +2,7 @@
 
 > **Hyperlocal commerce for villages.** Order from nearby shops — food, grocery, pharmacy, bakery, stationery, dairy, meat & fish — delivered by folks from your own village.
 
-**Version:** `v0.4.0` — see [CHANGELOG.md](./CHANGELOG.md) for release notes.
+**Version:** `v0.6.0` — see [CHANGELOG.md](./CHANGELOG.md) for release notes.
 
 **Confidential prototype. © 2026 Sunil Malleshaiah. All rights reserved.**
 

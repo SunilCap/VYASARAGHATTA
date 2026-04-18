@@ -7,6 +7,73 @@ and this project follows [Semantic Versioning](https://semver.org/) once it reac
 
 ---
 
+## [0.6.0] — 2026-04-18
+
+### Added
+- **Customer order history.** Tap "📋 Orders" in the bottom nav to see
+  every past order from this device. Each card expands to show the
+  full itemised breakdown, address, GPS coordinates, and voice-note
+  transcript. One-tap "Reorder" button adds all items back to cart
+  (skipping any that are out of stock).
+- **Global item search on Home.** Type in the search box to find items
+  across every shop at once, live as you type. Multi-word AND matching
+  — "red cake" finds items matching both words.
+- **📷 Camera / image upload (OCR).** Next to the search bar, tap the
+  camera button to upload a photo of a shopping list. The app uses
+  Tesseract.js (lazy-loaded from CDN on first use) to read printed
+  text in the image and match it against the catalogue, suggesting
+  items to add. Works best for printed text, ~70% accuracy for
+  handwritten.
+
+### Fixed
+- **Voice notes now work on WhatsApp.** Previously the browser
+  recorded in WebM format, which WhatsApp rejects. Now prefers M4A
+  (AAC-in-MP4) which is universally supported. File extensions are
+  now correct (.m4a, .mp3, .ogg, or .webm only as last resort).
+- When a phone can only record in WebM, the user now sees a clear
+  message explaining they need to attach the saved audio to WhatsApp
+  manually as a document.
+- Fixed a potential script-crash bug from the previous `searchInput`
+  element rename. All DOM references are now safely guarded.
+
+### Notes
+- OCR requires an internet connection on first use (~2MB download).
+  After first load, it works offline.
+- Order history is stored on the customer's device only (localStorage).
+  Last 50 orders are kept; older ones are dropped automatically.
+
+---
+
+## [0.5.0] — 2026-04-18
+
+### Added
+- **GPS location on checkout.** Customers can tap "📍 GPS" to fill their
+  delivery address automatically. Uses browser geolocation + reverse
+  geocoding via OpenStreetMap Nominatim (free, no API key).
+- **Google Maps link** in the outgoing WhatsApp order message when GPS
+  was used — shopkeepers can tap it to see the exact drop location.
+- **Rider Earnings dashboard** — Today / Week / Month totals, plus a
+  7-day bar chart and pending payout summary.
+- **Rider Order history** — last 12 deliveries with dates, shops,
+  distance, ratings received (with star icons), and earnings.
+- **Rider Payout history** — weekly settlement statements marked
+  Paid (with date) or Pending, with lifetime paid total.
+- **Rider Profile** — full editable profile with personal info, vehicle
+  type/number, document fields (Aadhaar last 4, licence), and payout
+  details (UPI, bank account, IFSC). Saved to localStorage.
+
+### Changed
+- Rider bottom navigation expanded from 3 tabs to 4: Orders, Earnings,
+  History, Profile.
+
+### Prototype notes
+- All earnings, history, and payouts are locally simulated demo data on
+  this device. Useful for showing the app to prospective rider partners
+  and gathering feedback on what they want to see. Real figures require
+  the backend (planned for v1.0).
+
+---
+
 ## [0.4.2] — 2026-04-18
 
 ### Fixed

@@ -81,23 +81,38 @@
       <h1>Order local.<br/>Delivered by neighbours.</h1>
       <p>Food, groceries, medicines, stationery — from shops in and around Vyasaraghatta.</p>
     </div>
-    <div class="search">
-      <span aria-hidden="true">🔎</span>
-      <input id="searchInput" type="text" placeholder="Search shops or items…" />
+    <div class="search search-combo">
+      <span aria-hidden="true" class="search-ico">🔎</span>
+      <input id="homeSearch" type="text" placeholder="Search items across all shops…" autocomplete="off" />
+      <button class="search-cam" onclick="document.getElementById('ocrFileInput').click()" title="Upload a photo of your list" aria-label="Upload photo of shopping list">📷</button>
+      <input id="ocrFileInput" type="file" accept="image/*" capture="environment" style="display:none;" onchange="handleOcrUpload(this.files[0])" />
     </div>
-    <div class="cat-grid" id="catGrid">
-      <button class="cat-tile on" data-cat="all"><span class="em">🏘️</span>All</button>
-      <button class="cat-tile" data-cat="food"><span class="em">🍱</span>Food</button>
-      <button class="cat-tile" data-cat="grocery"><span class="em">🛒</span>Grocery</button>
-      <button class="cat-tile" data-cat="pharmacy"><span class="em">💊</span>Pharmacy</button>
-      <button class="cat-tile" data-cat="bakery"><span class="em">🥖</span>Bakery</button>
-      <button class="cat-tile" data-cat="stationery"><span class="em">✏️</span>Stationery</button>
-      <button class="cat-tile" data-cat="dairy"><span class="em">🥛</span>Dairy</button>
-      <button class="cat-tile" data-cat="meat"><span class="em">🍗</span>Meat & Fish</button>
+
+    <!-- OCR status -->
+    <div id="ocrStatus" class="ocr-status" style="display:none;"></div>
+
+    <!-- Global search results (hidden when empty) -->
+    <div id="searchResults" class="search-results-panel" style="display:none;"></div>
+
+    <!-- Shop browsing (hidden while searching) -->
+    <div id="browseContent">
+      <div class="cat-grid" id="catGrid">
+        <button class="cat-tile on" data-cat="all"><span class="em">🏘️</span>All</button>
+        <button class="cat-tile" data-cat="food"><span class="em">🍱</span>Food</button>
+        <button class="cat-tile" data-cat="grocery"><span class="em">🛒</span>Grocery</button>
+        <button class="cat-tile" data-cat="pharmacy"><span class="em">💊</span>Pharmacy</button>
+        <button class="cat-tile" data-cat="bakery"><span class="em">🥖</span>Bakery</button>
+        <button class="cat-tile" data-cat="stationery"><span class="em">✏️</span>Stationery</button>
+        <button class="cat-tile" data-cat="dairy"><span class="em">🥛</span>Dairy</button>
+        <button class="cat-tile" data-cat="meat"><span class="em">🍗</span>Meat & Fish</button>
+      </div>
+      <div class="section-title">Open near you</div>
+      <div id="shopList"></div>
     </div>
-    <div class="section-title">Open near you</div>
-    <div id="shopList"></div>
   </section>
+
+  <!-- Customer order history view -->
+  <section id="view-history" class="view"></section>
 
   <section id="view-shop" class="view">
     <button class="back" onclick="show('view-browse')">← Back</button>
@@ -116,7 +131,13 @@
     <div id="cartSummary"></div>
     <div class="panel">
       <div class="field"><span class="lbl">Deliver to</span>
-        <input id="addr" type="text" placeholder="House no., street, landmark" value="Near Anjaneya temple, 2nd cross" />
+        <div class="addr-row">
+          <input id="addr" type="text" placeholder="House no., street, landmark" value="Near Anjaneya temple, 2nd cross" />
+          <button type="button" class="gps-btn" onclick="useMyLocation()" aria-label="Use my current location">
+            <span id="gpsIcon">📍</span> <span id="gpsLabel">GPS</span>
+          </button>
+        </div>
+        <div id="gpsStatus" class="gps-status"></div>
       </div>
       <div class="field"><span class="lbl">Phone number</span>
         <input id="phone" type="tel" placeholder="10-digit mobile" value="98xxxxxx21" />
@@ -327,7 +348,7 @@
 <nav class="bottomnav" id="navCustomer">
   <button class="active" onclick="show('view-browse')"><span class="ic">🏠</span>Home</button>
   <button onclick="show('view-checkout')"><span class="ic">🧺</span>Basket</button>
-  <button onclick="alert('Order history — coming soon in full build.')"><span class="ic">📋</span>Orders</button>
+  <button onclick="show('view-history'); renderCustomerHistory();"><span class="ic">📋</span>Orders</button>
 </nav>
 <nav class="bottomnav" id="navShop" style="display: none;">
   <button class="active" onclick="dashTab('orders')"><span class="ic">🔔</span>Orders</button>
@@ -335,9 +356,10 @@
   <button onclick="alert('Earnings report — coming soon.')"><span class="ic">📊</span>Earnings</button>
 </nav>
 <nav class="bottomnav" id="navRider" style="display: none;">
-  <button class="active"><span class="ic">🏍️</span>Orders</button>
-  <button onclick="alert('Earnings — coming soon.')"><span class="ic">💰</span>Earnings</button>
-  <button onclick="alert('Profile — coming soon.')"><span class="ic">👤</span>Profile</button>
+  <button class="active" onclick="riderTab('orders')"><span class="ic">🏍️</span>Orders</button>
+  <button onclick="riderTab('earnings')"><span class="ic">💰</span>Earnings</button>
+  <button onclick="riderTab('history')"><span class="ic">📋</span>History</button>
+  <button onclick="riderTab('profile')"><span class="ic">👤</span>Profile</button>
 </nav>
 
 <div class="legal">

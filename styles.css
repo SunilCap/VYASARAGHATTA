@@ -852,3 +852,392 @@ input, select, textarea {
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
 }
+
+/* ====================================================================
+   GPS button + status for checkout
+   ==================================================================== */
+.addr-row { display: flex; gap: 8px; align-items: stretch; }
+.addr-row input { flex: 1; min-width: 0; }
+.gps-btn {
+  flex-shrink: 0;
+  background: var(--accent-soft);
+  color: var(--accent-2);
+  border: 1px solid var(--accent);
+  padding: 0 14px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+.gps-btn:active { background: var(--accent); color: white; }
+.gps-status {
+  font-size: 12px;
+  margin-top: 6px;
+  color: var(--ink-soft);
+  min-height: 16px;
+  line-height: 1.4;
+}
+.gps-status.ok  { color: var(--ok); }
+.gps-status.err { color: var(--accent-2); }
+
+/* ====================================================================
+   RIDER — Earnings, History, Profile
+   ==================================================================== */
+
+.earn-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.earn-card {
+  background: white;
+  border: 1px solid var(--rule);
+  border-radius: 12px;
+  padding: 12px 8px;
+  text-align: center;
+}
+.earn-lbl {
+  font-size: 11px;
+  color: var(--ink-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.earn-val {
+  font-family: 'Fraunces', Georgia, serif;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--accent);
+  line-height: 1.1;
+}
+.earn-sub {
+  font-size: 11px;
+  color: var(--ink-soft);
+  margin-top: 2px;
+}
+
+.panel-title {
+  font-family: 'Fraunces', Georgia, serif;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  margin-bottom: 12px;
+  color: var(--ink);
+}
+
+/* Bar chart */
+.bar-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  height: 160px;
+  padding: 4px 0;
+}
+.bar-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  height: 100%;
+  min-width: 0;
+}
+.bar-val {
+  font-size: 10px;
+  color: var(--ink-soft);
+  margin-bottom: 3px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.bar {
+  width: 100%;
+  background: linear-gradient(180deg, var(--accent) 0%, var(--accent-2) 100%);
+  border-radius: 5px 5px 2px 2px;
+  min-height: 4px;
+  flex-shrink: 0;
+  transition: height .5s ease-out;
+}
+.bar-label {
+  font-size: 10px;
+  color: var(--ink-soft);
+  margin-top: 5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* Payout pending */
+.payout-pending {
+  background: #fef3c7;
+  border-radius: 10px;
+  padding: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.payout-summary {
+  font-size: 14px;
+  color: var(--ink-soft);
+  padding: 8px 0;
+}
+
+/* History toggle */
+.history-toggle {
+  display: flex;
+  background: var(--paper-2);
+  border-radius: 999px;
+  padding: 3px;
+  margin-bottom: 12px;
+}
+.history-toggle button {
+  flex: 1;
+  padding: 8px 12px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-soft);
+  background: transparent;
+}
+.history-toggle button.active {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+/* History / payout item */
+.history-item {
+  background: white;
+  border: 1px solid var(--rule);
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin-bottom: 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+}
+.history-left { flex: 1; min-width: 0; }
+.history-id {
+  font-family: 'Fraunces', Georgia, serif;
+  font-weight: 700;
+  font-size: 14px;
+  margin-bottom: 2px;
+}
+.history-meta {
+  font-size: 12px;
+  color: var(--ink-soft);
+  line-height: 1.4;
+}
+.history-rating {
+  margin-top: 2px;
+}
+.history-amount {
+  font-family: 'Fraunces', Georgia, serif;
+  font-weight: 700;
+  font-size: 16px;
+  color: var(--ok);
+  white-space: nowrap;
+}
+
+/* Profile form */
+.profile-field {
+  margin-bottom: 12px;
+}
+.profile-field:last-child { margin-bottom: 0; }
+.profile-field .lbl {
+  display: block;
+  font-size: 12px;
+  color: var(--ink-soft);
+  margin-bottom: 4px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.profile-field input,
+.profile-field select {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  background: var(--paper);
+  outline: none;
+  font-size: 15px;
+}
+.profile-field input:focus,
+.profile-field select:focus { border-color: var(--accent); background: white; }
+.profile-field input:disabled { opacity: 0.6; }
+
+.doc-hint {
+  font-size: 12px;
+  color: var(--ink-soft);
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: var(--paper-2);
+  border-radius: 8px;
+  line-height: 1.4;
+}
+
+/* ====================================================================
+   GLOBAL SEARCH + OCR
+   ==================================================================== */
+
+.search-combo {
+  gap: 6px;
+}
+.search-combo .search-ico {
+  flex-shrink: 0;
+}
+.search-combo input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  font-size: 16px;
+}
+.search-cam {
+  flex-shrink: 0;
+  background: var(--paper-2);
+  border-radius: 999px;
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  font-size: 18px;
+  margin-left: 4px;
+}
+.search-cam:active { background: var(--rule); }
+
+.ocr-status {
+  background: var(--accent-soft);
+  border: 1px solid var(--accent);
+  color: var(--accent-2);
+  border-radius: 10px;
+  padding: 12px 14px;
+  font-size: 13px;
+  margin-bottom: 12px;
+  line-height: 1.5;
+}
+.ocr-status.ok {
+  background: #dcfce7;
+  border-color: var(--ok);
+  color: var(--ok);
+}
+.ocr-status.err {
+  background: #fee2e2;
+  border-color: var(--accent-2);
+  color: var(--accent-2);
+}
+
+.search-results-panel {
+  margin-bottom: 16px;
+}
+.search-results-header {
+  font-family: 'Fraunces', Georgia, serif;
+  font-size: 14px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-soft);
+  margin-bottom: 10px;
+}
+
+.search-result {
+  background: white;
+  border: 1px solid var(--rule);
+  border-radius: 12px;
+  padding: 12px;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.search-result .item-emoji {
+  width: 48px;
+  height: 48px;
+  font-size: 24px;
+}
+.search-result .item-name {
+  font-size: 15px;
+  font-weight: 600;
+}
+.search-result .item-desc {
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+.search-result .item-price {
+  font-family: 'Fraunces', Georgia, serif;
+  font-weight: 700;
+  font-size: 15px;
+  margin-top: 2px;
+}
+
+/* ====================================================================
+   CUSTOMER ORDER HISTORY
+   ==================================================================== */
+
+.order-history-card {
+  background: white;
+  border: 1px solid var(--rule);
+  border-radius: 12px;
+  padding: 14px;
+  margin-bottom: 10px;
+  cursor: pointer;
+  transition: transform 0.1s;
+}
+.order-history-card:active { transform: scale(0.996); }
+
+.order-history-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.order-history-id {
+  font-family: 'Fraunces', Georgia, serif;
+  font-weight: 700;
+  font-size: 15px;
+}
+.order-history-date {
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+.order-history-total {
+  font-family: 'Fraunces', Georgia, serif;
+  font-weight: 700;
+  font-size: 17px;
+  color: var(--accent);
+  white-space: nowrap;
+}
+.order-history-shops {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.order-history-details {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--rule);
+}
+.order-history-line {
+  display: flex;
+  justify-content: space-between;
+  padding: 3px 0;
+  font-size: 13px;
+  color: var(--ink);
+}
+.order-history-totals {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--rule);
+}
+.order-history-footer {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--rule);
+}
